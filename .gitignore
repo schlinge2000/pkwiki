@@ -1,0 +1,23 @@
+# Secrets
+.env
+
+# Rohdokumente (grosse Binärdateien — nicht in Git)
+raw/
+
+# Obsidian-Konfiguration
+wiki/.obsidian/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.uv/
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Temporäre Dateien
+*.tmp
+~$*
