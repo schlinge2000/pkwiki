@@ -4,6 +4,76 @@
 
 ---
 
+## 2026-04-18 00:10 — INGEST
+Quelle: raw/pdfs/Leistungsbeschreibung BO 2024.pdf
+Neue Seiten: [[leistungsbeschreibung-bo-2024]], [[bestandsoptimierung-addone-bo]], [[bedarfsprognose-addone-bo]], [[management-by-exception-disposition]], [[sicherheitsbestand-servicegrad-berechnung]], [[servicegradorientierte-sporadendisposition]], [[standortuebergreifende-planung-bestand]], [[sekundaerbedarfsplanung]], [[kapazitaetsvisualisierung-produktion]], [[inform-gmbh]], [[addone-bo]]
+Aktualisierte Seiten: [[index]]
+
+## 2026-04-17 00:20 — INGEST
+Quelle: raw/pdfs/151225_ Software as a Service-Vertrag_Prognoseservice.pdf
+Neue Seiten: [[saas-vertrag-prognoseservice-inform-hauck]], [[saas-prognoseservice]], [[historische-daten-prognoseservice]], [[forecast-entscheidungsunterstuetzung]], [[kundendaten-verantwortung-saas]], [[datenloeschung-nach-vertragsende]], [[saas-preisanpassungsmechanismus]], [[hauck-gmbh]]
+Aktualisierte Seiten: [[index]]
+
+## 2026-04-17 00:10 — INGEST
+Quelle: raw/pdfs/Report_Forecast_Maschinenauslastung.pdf
+Neue Seiten: [[report-forecast-maschinenauslastung]], [[maschinenauslastungsprognose]], [[aggregationsniveau-prognosen]], [[mittelwert-baseline-prognose]], [[datenhistorie-mustererkennung]], [[maschinenstunden-normalisierung]], [[sporadische-nachfrage-prognose]], [[fst]], [[addone]]
+Aktualisierte Seiten: [[index]]
+
+## 2026-04-18 00:01 — INGEST
+Quelle: raw/pdfs/CS01_DE_Sie_key_learnings_summary_new.pdf
+Neue Seiten: [[cs01-de-sie-key-learnings-summary-new]], [[personenbezogene-daten]], [[besonders-schuetzenswerte-daten]], [[rechtfertigung-datenverarbeitung]], [[berechtigungskonzept-datenzugriff]], [[zweckbindung-daten]], [[datenminimierung]], [[speicherbegrenzung-daten]], [[pseudonymisierung]]
+Aktualisierte Seiten: [[index]]
+
+## 2026-04-17 23:59 — INGEST
+Quelle: raw/pdfs/Forecast Error Measures Intermittent Demand by Manu Joseph Towards Data Science.pdf
+Neue Seiten: [[forecast-error-measures-intermittent-demand]], [[syntetos-boylan-demand-classification]], [[average-demand-interval-adi]], [[coefficient-of-variation-squared-demand]], [[cumulative-forecast-error-cfe]], [[periods-in-stock-pis]], [[number-of-shortages-nosp]], [[stock-keeping-oriented-prediction-error-costs-spec]], [[percent-better-metric]], [[manu-joseph]], [[peter-wallstrom]]
+Aktualisierte Seiten: [[index]]
+
+## 2026-04-17 23:59 — INGEST
+Quelle: raw/pdfs/Conformal Prediction in Time Series Methods and Interpretability.pdf
+Neue Seiten: [[conformal-prediction-time-series-methods-interpretability]], [[conformal-prediction]], [[conformal-prediction-time-series]], [[prediction-intervals-coverage-guarantees]], [[adaptive-conformal-inference]], [[ensemble-batch-prediction-intervals-enbpi]], [[uncertainty-quantification-forecasting]], [[interpretability-conformal-prediction]], [[vladimir-vovk]], [[alex-gammerman]], [[vladimir-vapnik]]
+Aktualisierte Seiten: [[index]]
+
+## 2026-04-17 23:59 — INGEST
+Quelle: raw/pdfs/SOFTS_ The Latest Innovation in Time Series Forecasting _ by Marco Peixeiro _ Towards Data Science.pdf
+Neue Seiten: [[softs-latest-innovation-time-series-peixeiro]], [[softs-model]], [[stad-module]], [[series-core-fusion]], [[reversible-instance-normalization-revin]], [[multivariate-long-horizon-forecasting]], [[electricity-transformer-temperature-dataset-ett]]
+Aktualisierte Seiten: [[marco-peixeiro]], [[index]]
+
+## 2026-04-17 23:59 — INGEST
+Quelle: raw/pdfs/LLMs_SCM_Optim 1 1.pdf
+Neue Seiten: [[llms-supply-chain-optimization-optiguide]], [[optiguide-framework]], [[llms-supply-chain-optimization]], [[explainable-optimization]], [[what-if-analysis-optimization]], [[in-context-learning-optimization-interfaces]], [[evaluation-benchmark-llm-optimization]], [[microsoft-research]], [[microsoft-azure]], [[gurobi-optimizer]]
+Aktualisierte Seiten: [[index]]
+
+## 2026-04-17 23:59 — INGEST
+Quelle: raw/pdfs/PatchTST_ A Breakthrough in Time Series Forecasting _ by Marco Peixeiro _ Towards Data Science.pdf
+Neue Seiten: [[patchtst-breakthrough-time-series-peixeiro]], [[patchtst]], [[patching-time-series]], [[channel-independence-time-series]], [[transformer-time-series-forecasting]], [[self-supervised-representation-learning-time-series]], [[n-beats]], [[n-hits]], [[marco-peixeiro]], [[neuralforecast]]
+Aktualisierte Seiten: [[index]]
+
+## 2026-04-17 23:59 — INGEST
+Quelle: raw/pdfs/MAAPE_ScienceDirectPaper.pdf
+Neue Seiten: [[maape-sciencedirect-paper]], [[mean-arctangent-absolute-percentage-error-maape]], [[absolute-percentage-error-ape]], [[mape-limitations-zero-values]], [[outlier-robustness-maape]], [[forecast-metric-bias-mape-vs-maape]], [[sungil-kim]], [[heeyoung-kim]]
+Aktualisierte Seiten: [[index]]
+
+## 2026-04-17 23:59 — INGEST
+Quelle: raw/pdfs/Medium.pdf
+Neue Seiten: [[medium-invoice-2024-01-11]], [[medium-annual-membership]], [[medium-billing-invoice]], [[medium-membership-period]], [[medium-corporation]]
+Aktualisierte Seiten: [[christian-miessen]], [[index]]
+
+## 2026-04-17 23:59 — INGEST
+Quelle: raw/pdfs/foresight.pdf
+Neue Seiten: foresight-forecast-accuracy-intermittent-demand, forecast-accuracy-metrics, intermittent-demand, mean-absolute-scaled-error-mase, mape, smape, relative-error-metrics, scale-dependent-error-metrics, rob-j-hyndman
+Aktualisierte Seiten: index
+
+## 2026-04-17 23:59 — INGEST
+Quelle: raw/pdfs/datenlizenzvertrag_draft.pdf
+Neue Seiten: datenlizenzvertrag-draft, datenlizenzvertrag-ki, rohdatennutzung-ki, ki-trainingsdaten, datenpooling-ki-modelle, joint-controller-dsgvo-ki, inform-institut-fuer-operations-research-und-management
+Aktualisierte Seiten: index
+
+## 2026-04-17 23:59 — INGEST
+Quelle: raw/docs/demand ai.pdf
+Neue Seiten: demand-ai-report, demand-forecasting, ai-driven-demand-forecasting, inventory-optimization-ai, dynamic-pricing-ai, ai-big-data-integration-demand, ethical-ai-demand-systems, unilever, procter-and-gamble, ibm-watson-health
+Aktualisierte Seiten: index
+
 ## 2026-04-17 23:59 — INGEST
 Quelle: raw/docs/Strategiegefaehrdung.docx
 Neue Seiten: strategischer-rahmen-demand-ai, demand-ai-vision, bo-web-strategierisiko, datenrechte-demand-ai, erstbevorratung-strategischer-case, bo-web, strategiegefaehrdung

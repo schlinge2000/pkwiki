@@ -4,15 +4,37 @@
 
 ## Neue Quellen
 - [[strategiegefaehrdung]]
+- [[demand-ai-report]]
+- [[datenlizenzvertrag-draft]]
+- [[foresight-forecast-accuracy-intermittent-demand]]
+- [[medium-invoice-2024-01-11]]
+- [[maape-sciencedirect-paper]]
+- [[patchtst-breakthrough-time-series-peixeiro]]
+- [[llms-supply-chain-optimization-optiguide]]
+- [[softs-latest-innovation-time-series-peixeiro]]
+- [[conformal-prediction-time-series-methods-interpretability]]
+- [[forecast-error-measures-intermittent-demand]]
+- [[cs01-de-sie-key-learnings-summary-new]]
+- [[report-forecast-maschinenauslastung]]
+- [[saas-vertrag-prognoseservice-inform-hauck]]
+- [[leistungsbeschreibung-bo-2024]]
 
 ## AI & Machine Learning
-- [[demand-ai-vision]]
+- [[bedarfsprognose-addone-bo]]
 
 ## Business
-- [[strategischer-rahmen-demand-ai]]
-- [[bo-web-strategierisiko]]
-- [[datenrechte-demand-ai]]
-- [[erstbevorratung-strategischer-case]]
+- [[management-by-exception-disposition]]
+- [[sicherheitsbestand-servicegrad-berechnung]]
+- [[servicegradorientierte-sporadendisposition]]
+- [[standortuebergreifende-planung-bestand]]
+
+## Technologie
+- [[bestandsoptimierung-addone-bo]]
+- [[sekundaerbedarfsplanung]]
+- [[kapazitaetsvisualisierung-produktion]]
 
 ## Entities
-- [[bo-web]]
+(…bestehende Inhalte…)
+- [[hauck-gmbh]]
+- [[inform-gmbh]]
+- [[addone-bo]]

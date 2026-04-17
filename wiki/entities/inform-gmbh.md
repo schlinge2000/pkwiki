@@ -2,8 +2,13 @@
 title: INFORM GmbH
 type: entity
 entity_type: company
-sources: ["raw/docs/2024-12-09 Datenlizenzvertrag_DRAFT.docx"]
-related: ["[[datenlizenzvertrag]]", "[[ki-trainingsdaten]]", "[[datenpooling]]", "[[datensicherheit-iso27001]]"]
-last_updated: 2026-04-17
+sources: [raw/pdfs/Leistungsbeschreibung BO 2024.pdf]
+related: ["[[bestandsoptimierung-addone-bo]]"]
+last_updated: 2026-04-18
 ---
-INFORM – Institut für Operations Research und Management GmbH, Aachen, ist Vertragspartner im Datenlizenzvertrag. Das Unternehmen nutzt Kundendaten zur Erbringung von Cloud- und KI-Services und erhält Nutzungsrechte an Roh- und KI-Trainingsdaten zur Entwicklung und Verbesserung eigener Services.
+
+**INFORM GmbH** ist ein Softwareunternehmen mit Sitz in Aachen. Das Unternehmen entwickelt Optimierungssoftware für operative Entscheidungsprozesse, unter anderem in Logistik, Produktion und Supply‑Chain‑Management.
+
+Zu den Produkten gehört die Software **ADD*ONE**, deren Modul [[bestandsoptimierung-addone-bo]] speziell auf Bestandsoptimierung und Disposition ausgerichtet ist.
+
+Das Unternehmen stellt außerdem Supportleistungen für die Software bereit, einschließlich Hotline‑Support während der üblichen Bürozeiten.

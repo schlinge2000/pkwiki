@@ -2,15 +2,16 @@
 title: Medium Corporation
 type: entity
 entity_type: company
-sources: ["raw/pdfs/Medium.pdf"]
-related: ["[[medium-annual-membership]]", "[[saas-subscription]]", "[[inform]]"]
+sources: [raw/pdfs/Medium.pdf]
+related: ["[[medium-annual-membership]]", "[[medium-billing-invoice]]"]
 last_updated: 2026-04-17
 ---
 
-Die Medium Corporation ist der Aussteller der Rechnung aus der Quelle *Medium.pdf*.
+**Medium Corporation** ist das Unternehmen, das in der vorliegenden Quelle als Rechnungssteller auftritt.
 
-Daten laut Dokument:
-- Adresse: 548 Market St PMB 42061, San Francisco, CA 94104, USA
-- Rechtsform: US‑Unternehmen
-- EIN: 45‑2768864
-- Produkt im Kontext: Medium Annual Membership
+Angaben aus der Rechnung:
+
+- Adresse: 548 Market St, PMB 42061, San Francisco, CA 94104
+- EIN: 45-2768864
+
+Das Unternehmen stellt in der Quelle eine Rechnung für eine **Medium Annual Membership** aus.

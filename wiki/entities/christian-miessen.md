@@ -1,9 +1,17 @@
 ---
-title: Dr. Christian Mießen
+title: Christian Miessen
 type: entity
 entity_type: person
-sources: ["raw/docs/Demand AI - One Pager.docx"]
-related: ["[[foundation-models]]", "[[rechnen-mit-semantik]]"]
+sources: [raw/pdfs/Medium.pdf]
+related: ["[[medium-annual-membership]]", "[[medium-corporation]]"]
 last_updated: 2026-04-17
 ---
-Autor des One-Pagers „Demand AI – One Pager“. Fachlicher Fokus auf Zeitreihenprognosen, Optimierungslogiken und KI‑gestützte Planung.
+
+**Christian Miessen** erscheint in der Quelle als Rechnungsempfänger einer **Medium Annual Membership**.
+
+Angaben aus der Rechnung:
+
+- E-Mail: christian.miessen@inform-software.com
+- Leistung: Medium Annual Membership
+- Rechnungsdatum: 11.01.2024
+- Betrag: 50,00 USD
