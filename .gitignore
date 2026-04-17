@@ -18,6 +18,9 @@ __pycache__/
 Thumbs.db
 desktop.ini
 
+# Ingest-Logs (lokal, kein Versionierungsbedarf)
+logs/
+
 # Temporäre Dateien
 *.tmp
 ~$*
