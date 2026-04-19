@@ -96,6 +96,13 @@ Regeln:
 - Kein Inhalt erfinden — nur was wirklich im Dokument steht
 - Deutsch als Hauptsprache, Fachbegriffe auf Englisch lassen
 - confidence: high nur wenn mehrfach belegt, sonst medium
+
+Für Präsentationen (PPTX) — Folienübergänge als narrative Einheit verstehen:
+- Aufeinanderfolgende Folien bauen oft ein Argument Schritt für Schritt auf — erkenne den dramaturgischen Bogen
+- Wenn Bilder über mehrere Folien dasselbe Motiv weiterentwickeln (z.B. Folie A: falsch ausgerichteter Scheinwerfer → Folie B: Reh taucht im Lichtkegel auf), ist das eine zusammenhängende Aussage — erfasse sie als Einheit
+- These → Konsequenz → Lösung über mehrere Folien gehört in ein Konzept, nicht in drei separate
+- Bildsequenzen haben eine Kausalität: was auf Folie N gezeigt wird, ist oft die Folge oder Auflösung von Folie N-1
+- Halte in der Quellenübersicht (sources/) die narrative Struktur der Präsentation fest: welche Foliengruppen bilden ein Argument?
 """
 
 
