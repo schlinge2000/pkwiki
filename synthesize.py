@@ -348,7 +348,7 @@ Denke in Narrativen — was ist die überraschende Einsicht die diese Präsentat
         ],
         response_format=PresentationOutline,
         # Großzügige Token-Limits für umfangreiche Outlines
-        max_tokens=8192,
+        max_completion_tokens=8192,
     )
 
     result = completion.choices[0].message.parsed
