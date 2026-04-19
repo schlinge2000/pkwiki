@@ -21,6 +21,14 @@ desktop.ini
 # Ingest-Logs (lokal, kein Versionierungsbedarf)
 logs/
 
+# Design-Templates (proprietär, nicht öffentlich)
+templates/*.potx
+templates/*.pptx
+
+# Generierte Präsentationen (außer .gitkeep)
+output/*
+!output/.gitkeep
+
 # Temporäre Dateien
 *.tmp
 ~$*
