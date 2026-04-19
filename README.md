@@ -1,42 +1,134 @@
 # Knowledge Wiki
 
-> Dokument ablegen. Fertig. Das LLM macht den Rest.
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Statt Notizen zu tippen, werfe ich PDFs, Präsentationen und Word-Dokumente in einen Ordner.
-Ein Watcher erkennt neue Dateien, extrahiert den Inhalt (inkl. Bilder via Vision-API) und lässt
-ein LLM daraus strukturierte, verlinkte Wiki-Seiten schreiben — automatisch, im Hintergrund.
+> Dokument ablegen. Fertig. Das LLM kompiliert den Rest.
+
+Statt Notizen zu tippen, werden PDFs, Präsentationen und Word-Dokumente in einen Ordner gelegt.
+Ein Watcher erkennt neue Dateien automatisch, extrahiert den Inhalt — inklusive Bilder via
+Azure OpenAI Vision API — und lässt ein LLM daraus strukturierte, verlinkte Wiki-Seiten schreiben.
+Das Ergebnis ist eine navigierbare Wissensbasis in Obsidian, die mit jeder neuen Quelle wächst.
 
 Inspiriert von [Andrej Karpathys LLM-Wiki-Idee](https://x.com/karpathy/status/1751350002281300461):
 Das LLM als "Compiler" — Rohdokumente rein, Wissensbasis raus.
 
-## Warum kein RAG?
+---
 
-RAG (Retrieval + Generierung zur Laufzeit) beantwortet Fragen über Dokumente.
-Dieses System macht etwas anderes: Es **kompiliert Wissen einmalig** in eine lesbare,
-navigierbare Wissensbasis.
+## Warum nicht RAG?
 
-- Keine Vektordatenbank, kein Embedding, kein Index
-- Jede neue Quelle reichert bestehende Seiten an und verlinkt sie
-- Das Ergebnis ist **lesbar** — in Obsidian, im Terminal, überall
+RAG (Retrieval-Augmented Generation) ist die Standardantwort auf "Fragen über eigene Dokumente".
+Dieses System verfolgt einen grundlegend anderen Ansatz — und löst dabei Probleme, die RAG
+strukturell nicht lösen kann:
 
-## Wie es funktioniert
+| Problem mit RAG | Dieser Ansatz |
+|-----------------|---------------|
+| Chunking zerschneidet Sinnzusammenhänge | Vollständiges Dokument wird einmalig kompiliert |
+| Bilder werden ignoriert oder als Platzhalter behandelt | Vision-API beschreibt jedes Bild im Kontext |
+| Einmal indexiert — statisch bis zum nächsten Rebuild | Neue Quellen revidieren und erweitern bestehende Seiten |
+| Antworten entstehen zur Laufzeit, unkontrolliert | Wiki-Seiten sind deterministisch, menschenprüfbar |
+| Funktioniert nur mit KI | Ergebnis ist Markdown — ohne KI lesbar und navigierbar |
+| Vektordatenbank + Embedding-Infrastruktur nötig | Keine Infrastruktur, kein Index, kein Server |
+
+Das Kernprinzip: Wissen wird **einmalig kompiliert** statt bei jeder Anfrage neu zusammengesetzt.
+Neue Quellen legen keine parallelen Chunks ab — sie **revidieren bestehende Seiten** und
+**akkumulieren Wissen über Zeit**.
+
+---
+
+## Pipeline
 
 ```
-raw/mein-dokument.pdf
-        ↓  extract.py  (Text + Bildanalyse via Vision-API)
-raw/.cache/mein-dokument.md
-        ↓  ingest.py   (Azure OpenAI → strukturiertes JSON)
-wiki/concepts/konzept-a.md
-wiki/concepts/konzept-b.md
-wiki/sources/mein-dokument.md
-wiki/index.md  ← wird automatisch aktualisiert
+raw/dokument.pdf
+raw/slides/vortrag.pptx
+raw/docs/analyse.docx
+        │
+        ▼
+┌───────────────────────────────────────────────────────┐
+│  extract.py                                           │
+│                                                       │
+│  PPTX  ──► Slide-Bilder (PIL)                         │
+│              └─► Azure OpenAI Vision API              │
+│                    └─► Bildbeschreibung auf Folie      │
+│  PDF   ──► PyMuPDF (Fallback bei kaputten PDFs)       │
+│  DOCX  ──► python-docx                                │
+│                                                       │
+│  Ergebnis: raw/.cache/dokument.md                     │
+└───────────────────────────────────────────────────────┘
+        │
+        ▼
+┌───────────────────────────────────────────────────────┐
+│  ingest.py                                            │
+│                                                       │
+│  .cache/dokument.md ──► Azure OpenAI (GPT-4o)         │
+│                           └─► strukturiertes JSON     │
+│                                 ├─ concepts[]         │
+│                                 ├─ entities[]         │
+│                                 ├─ source_summary     │
+│                                 └─ suggested_links[]  │
+│                                                       │
+│  JSON ──► Wiki-Seiten schreiben / aktualisieren       │
+└───────────────────────────────────────────────────────┘
+        │
+        ├──► wiki/concepts/konzept-a.md   (neu oder aktualisiert)
+        ├──► wiki/concepts/konzept-b.md
+        ├──► wiki/entities/person-x.md
+        ├──► wiki/sources/dokument.md     (Quellenübersicht + Autor)
+        └──► wiki/index.md               (automatisch aktualisiert)
 ```
+
+Der Watcher (`watch.ps1`) pollt `raw/` alle 5 Sekunden, erkennt neue Dateien und startet
+die Pipeline vollautomatisch im Hintergrund — ein paralleler Job zur Zeit.
+
+---
+
+## Wiki-Seitentypen
+
+### `concepts/` — Konzept- und Technologieseiten
+
+Eine Seite pro Konzept. Wird beim Ingest mehrerer Quellen zum selben Thema angereichert,
+nicht dupliziert. Mit explizitem Confidence-Level:
+
+```yaml
+---
+title: Foundation Models für Zeitreihenprognose
+type: concept
+domain: ai
+sources: [raw/slides/FINAL BO KI Webinar.pptx]
+related: ["[[demand-forecasting]]", "[[timemoe]]", "[[transformer-zeitreihen]]"]
+confidence: high
+last_updated: 2025-04-19
+---
+
+Foundation Models für Zeitreihenprognosen sind vortrainierte Modelle, die ohne
+aufgabenspezifisches Fine-Tuning auf neue Zeitreihen angewendet werden können...
+```
+
+### `entities/` — Personen, Unternehmen, Produkte
+
+Für alle benannten Akteure, die in mehreren Kontexten auftauchen.
+
+### `sources/` — Quellenübersicht je Dokument
+
+Zusammenfassung mit Autor, Kontext und Kernaussagen — als Einstiegspunkt pro Dokument.
+
+### `syntheses/` — Themenübergreifende Analysen
+
+Vom LLM erkannte Muster und Verbindungen über mehrere Quellen hinweg.
+
+### `index.md` + `log.md` — immer automatisch aktualisiert
+
+`index.md` listet alle Wiki-Seiten. `log.md` ist ein Append-only-Aktivitätslog jeder
+Ingest-Operation mit Zeitstempel, Quelle und erstellten/aktualisierten Seiten.
+
+---
 
 ## Voraussetzungen
 
-- [`uv`](https://docs.astral.sh/uv/) (`winget install astral-sh.uv`)
-- Azure OpenAI Ressource mit GPT-4-class Deployment (Vision-fähig für PPTX)
+- [`uv`](https://docs.astral.sh/uv/) — Python-Paketmanager (`winget install astral-sh.uv`)
+- Azure OpenAI Ressource mit GPT-4o-Deployment (Vision-fähig, für PPTX-Bildanalyse)
 - [Obsidian](https://obsidian.md) als lokaler Viewer (optional, empfohlen)
+
+---
 
 ## Einrichtung
 
@@ -47,71 +139,134 @@ cd knowledge-wiki
 
 # 2. Azure-Credentials eintragen
 cp .env.example .env
-# .env öffnen und Werte setzen
+# .env oeffnen und Werte setzen (siehe unten)
 
-# 3. Watcher starten (überwacht raw/ auf neue Dateien)
+# 3. Watcher starten — ueberwacht raw/ auf neue Dateien
 powershell -ExecutionPolicy Bypass -File .\watch.ps1
+
+# Oder: als Windows Scheduled Task installieren (startet automatisch bei Login)
+powershell -ExecutionPolicy Bypass -File .\install-watcher.ps1
 ```
+
+### Konfiguration (`.env`)
+
+```env
+AZURE_OPENAI_API_KEY=...
+AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_API_VERSION=2025-04-01-preview   # optional, neueste Version empfohlen
+```
+
+### Erste Dokumente verarbeiten
+
+```powershell
+# Einzelnes Dokument
+python ingest.py raw/pdfs/mein-paper.pdf
+
+# Alle Dateien in raw/ auf einmal (Batch-Extraktion + Ingest)
+.\extract-all.ps1
+```
+
+---
+
+## Skript-Referenz
+
+| Skript | Beschreibung |
+|--------|-------------|
+| `watch.ps1` | Watcher: pollt `raw/` alle 5s, loest automatisch Ingest aus (1 paralleler Job) |
+| `install-watcher.ps1` | Installiert Watcher als Windows Scheduled Task (startet bei Login) |
+| `extract.py` | Extraktion: Text + Vision-API-Bildbeschreibung + PyMuPDF-Fallback |
+| `ingest.py` | Haupt-Pipeline: Dokument → strukturiertes JSON → Wiki-Seiten |
+| `extract-all.ps1` | Batch-Extraktion aller Dateien in `raw/` |
+| `check-unseen.ps1` | Zeigt noch nicht ingested Dateien in `raw/` |
+| `retry-failed.ps1` | Wiederholt fehlgeschlagene Ingests |
+| `reextract-failed.ps1` | Re-extrahiert Slides mit Vision-Fehlern im Cache |
+| `reextract-slides.ps1` | Komplett-Re-Extraktion aller Slide-Decks |
+
+---
+
+## Obsidian
+
+1. [Obsidian](https://obsidian.md) herunterladen und installieren
+2. **"Open folder as vault"** → `wiki/` auswählen
+3. **Graph View** (`Ctrl+G`) — zeigt die Vernetzung aller Seiten als interaktiven Graphen
+
+Obsidian erkennt Dateiänderungen live — neue Wiki-Seiten erscheinen direkt nach dem Ingest,
+ohne Neustart. Cluster im Graph View entsprechen Kernthemen.
+
+**Shortcuts:**
+- `Ctrl+O` — Schnellsuche uber alle Seiten
+- `Ctrl+G` — Graph View (Vernetzung sichtbar machen)
+- `[[` tippen — Verlinkungsdialog fur manuelle Erganzungen
+
+---
 
 ## Verzeichnisstruktur
 
 ```
 raw/               # Rohdokumente — hierhin neue Dateien ablegen
   pdfs/            # Papers, Reports, Whitepapers
-  slides/          # Präsentationen (PPTX)
+  slides/          # Prasentationen (PPTX)
   docs/            # Word-Dokumente
+  links/           # Web-Artikel als .md-Dateien
+  inbox/           # Temporarer Eingang
   .cache/          # Auto-generierte Extrakte (nicht in Git)
 
 wiki/              # Die Wissensbasis — nur lokal + OneDrive-Sync
   index.md         # Inhaltsverzeichnis aller Seiten
-  log.md           # Append-only Aktivitätslog
+  log.md           # Append-only Aktivitatslog
   concepts/        # Konzept- und Technologieseiten
   entities/        # Personen, Unternehmen, Produkte
   sources/         # Zusammenfassung je Quelldokument
-  syntheses/       # Themenübergreifende Analysen
+  syntheses/       # Themenubergreifende Analysen
 
-ingest.py          # Haupt-Pipeline: Dokument → Wiki-Seiten (Azure OpenAI)
+ingest.py          # Haupt-Pipeline: Dokument → Wiki-Seiten
 extract.py         # Extraktion: PPTX/DOCX/PDF → Markdown + Vision
 watch.ps1          # Watcher: neue Dateien in raw/ → automatischer Ingest
-CLAUDE.md          # Schema & Regeln für den LLM-Maintainer
+CLAUDE.md          # Schema & Regeln fur den LLM-Maintainer
+.env.example       # Vorlage fur Azure-Credentials
 ```
 
-## Hilfsskripte
-
-| Skript | Zweck |
-|--------|-------|
-| `check-unseen.ps1` | Zeigt Dateien in raw/ die noch nicht ingested wurden |
-| `retry-failed.ps1` | Wiederholt fehlgeschlagene Ingests |
-| `reextract-failed.ps1` | Re-extrahiert Slides mit Vision-Fehlern im Cache |
-| `reextract-slides.ps1` | Komplette Re-Extraktion aller Slide-Decks |
-
-## Obsidian einrichten
-
-1. [Obsidian](https://obsidian.md) herunterladen
-2. **"Open folder as vault"** → `wiki/` auswählen
-3. **Graph View** öffnen (`Ctrl+G`) — zeigt die Vernetzung aller Seiten
-
-Obsidian erkennt Dateiänderungen live — neue Wiki-Seiten erscheinen sofort nach dem Ingest.
-
-**Nützliche Shortcuts:**
-- `Ctrl+O` — Schnellsuche über alle Seiten
-- `Ctrl+G` — Graph View (Cluster = Kernthemen)
-- `[[` tippen — Verlinkungsdialog für manuelle Ergänzungen
+---
 
 ## Git-Strategie
 
 | In Git | Nicht in Git |
 |--------|-------------|
-| `*.py`, `*.ps1` — Automation-Code | `wiki/` — Vault (OneDrive-Sync reicht) |
-| `CLAUDE.md` — LLM-Schema | `raw/` — Rohdokumente (zu groß, persönlich) |
-| `README.md`, `.env.example` | `.env` — API-Keys |
-| `.gitignore` | `raw/.cache/` — generierte Extrakte |
+| `*.py`, `*.ps1` — Automation-Code | `wiki/` — Vault (OneDrive-Sync genugt) |
+| `CLAUDE.md` — LLM-Schema | `raw/` — Rohdokumente (zu gross, personlich) |
+| `README.md`, `.env.example`, `.gitignore` | `.env` — API-Keys |
 
-Der Vault (`wiki/`) wird über OneDrive synchronisiert und ist nicht versioniert —
-er wächst kontinuierlich und enthält keine Logik, nur generierten Inhalt.
+Der Vault (`wiki/`) wird uber OneDrive synchronisiert und wachst kontinuierlich.
+Er enthalt keine Logik — nur generierten Inhalt — und muss nicht versioniert werden.
 
-## CLAUDE.md
+---
 
-Die zentrale Schema-Datei definiert Seitentypen, Frontmatter-Format, Wikilink-Konventionen
-und Qualitätsstandards. Wenn Claude im Verzeichnis geöffnet wird, liest er `CLAUDE.md`
-automatisch und weiß damit wie die Wiki gepflegt werden soll.
+## Bekannte Limitierungen
+
+- **EMF/WMF-Vektorgrafiken in PPTX** konnen nicht via Vision analysiert werden — PIL unterstuzt
+  diese Windows-Metafile-Formate nicht. Betroffene Folien werden mit einem Hinweis markiert.
+- **Sehr lange PDFs** werden auf 60.000 Zeichen gekurzt, bevor sie ans LLM gehen.
+  Bei sehr dichten Dokumenten gehen Inhalte aus dem letzten Drittel verloren.
+- **Vision-API-Kosten** sind hoher als reine Textextraktion — bei vielen grossen Slide-Decks
+  summieren sich die API-Kosten. Reine Text-PDFs laufen kostengunstig uber PyMuPDF.
+
+---
+
+## CLAUDE.md — das LLM-Schema
+
+`CLAUDE.md` ist die zentrale Betriebsanleitung fur das LLM. Sie definiert Seitentypen,
+Frontmatter-Format, Wikilink-Konventionen, Qualitatsstandards und die drei Hauptoperationen:
+
+- **INGEST** — Dokument zu Wiki-Seiten kompilieren
+- **QUERY** — Wissensbasis befragen (ohne RAG-Infrastruktur)
+- **LINT** — Wiki auf Widersprüche, Waisen und veraltete Einträge prüfen
+
+Wenn Claude Code im Projektverzeichnis geoffnet wird, liest er `CLAUDE.md` automatisch
+und weiß damit exakt, wie die Wiki gepflegt werden soll.
+
+---
+
+## Lizenz
+
+MIT — siehe [LICENSE](LICENSE)
