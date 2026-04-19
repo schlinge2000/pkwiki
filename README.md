@@ -285,6 +285,57 @@ und weiß damit exakt, wie die Wiki gepflegt werden soll.
 
 ---
 
+## GitHub Copilot Integration
+
+Die Wiki kann als persistente Wissensbasis für **GitHub Copilot in VS Code** genutzt werden —
+in jedem Workspace, nicht nur in diesem Repo.
+
+### Strategie
+
+Copilot liest `.instructions.md`-Dateien automatisch als Kontext ein. Durch eine globale
+User-Level-Instruction wird Copilot bei jeder Session darauf hingewiesen, dass die Wiki
+existiert und bei inhaltlichen Fragen konsultiert werden soll. Das ist kein RAG — Copilot
+liest die Wiki-Seiten direkt als Dateien, sobald eine Frage gestellt wird.
+
+**Wenn du fragst:** *„Was weiß ich über Foundation Models für Zeitreihen?"*  
+Copilot liest `wiki/index.md`, identifiziert relevante Seiten und antwortet auf Basis
+der bereits kompilierten Konzepte, Quellen und Synthesen — mit Verweisen auf konkrete Seiten.
+
+### Installation (einmalig)
+
+Die Instructions-Datei muss in den VS Code User-Prompts-Ordner kopiert werden.
+Dieser Ordner ist workspace-unabhängig und wird mit VS Code Settings Sync synchronisiert.
+
+```powershell
+# Pfad zum VS Code User-Prompts-Ordner ermitteln
+# Standard: C:\Users\<Name>\AppData\Roaming\Code\User\prompts\
+
+# Datei kopieren
+Copy-Item .github\copilot-user-instructions.md `
+  "$env:APPDATA\Code\User\prompts\knowledge-wiki.instructions.md"
+```
+
+Die Datei `.github\copilot-user-instructions.md` in diesem Repo dient als Vorlage.
+Nach dem Kopieren muss der Pfad in der Datei ggf. an den eigenen Benutzernamen angepasst werden.
+
+### Enthaltene Dateien
+
+| Datei | Zweck |
+|-------|-------|
+| `.github/copilot-instructions.md` | Workspace-Instruction: gilt nur in diesem Repo (automatisch) |
+| `.github/copilot-user-instructions.md` | Vorlage für User-Level-Instruction: muss einmalig in den User-Prompts-Ordner kopiert werden |
+
+### Nutzung
+
+Nach der Installation kann Copilot in jedem VS Code-Workspace auf die Wiki zugreifen:
+
+- **Inhaltliche Fragen** stellen — Copilot liest `wiki/index.md` und relevante Seiten
+- **INGEST** — neue Dokumente einlesen: *„Ingest raw/pdfs/neues-paper.pdf"*
+- **QUERY** — Wissensbasis befragen: *„Was weiß ich über Supply Chain Forecasting?"*
+- **LINT** — Wiki auf Lücken und Widersprüche prüfen: *„Lint die Wiki"*
+
+---
+
 ## Lizenz
 
 MIT — siehe [LICENSE](LICENSE)
