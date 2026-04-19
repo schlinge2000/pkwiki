@@ -206,12 +206,16 @@ def write_pages(pages: list[dict], log_entry: str, log: logging.Logger):
     created, updated = [], []
 
     for page in pages:
-        path = WIKI_DIR / page["path"]
+        # LLM gibt manchmal "wiki/concepts/foo.md" zurück obwohl WIKI_DIR schon wiki/ ist
+        page_path = page["path"].lstrip("/")
+        if page_path.startswith("wiki/"):
+            page_path = page_path[len("wiki/"):]
+        path = WIKI_DIR / page_path
         path.parent.mkdir(parents=True, exist_ok=True)
 
         action = page.get("action", "create")
 
-        if page["path"] in ("log.md",):
+        if page_path in ("log.md",):
             # Log: neuen Eintrag prependen
             existing = path.read_text(encoding="utf-8") if path.exists() else ""
             header = existing.split("---")[0] if "---" in existing else "# Aktivitätslog\n\n> Append-only. Neueste Einträge oben.\n\n"
@@ -223,11 +227,11 @@ def write_pages(pages: list[dict], log_entry: str, log: logging.Logger):
 
         path.write_text(page["content"], encoding="utf-8")
         if action == "update":
-            updated.append(page["path"])
-            log.info("UPDATE  %s", page["path"])
+            updated.append(page_path)
+            log.info("UPDATE  %s", page_path)
         else:
-            created.append(page["path"])
-            log.info("CREATE  %s", page["path"])
+            created.append(page_path)
+            log.info("CREATE  %s", page_path)
 
     return created, updated
 
