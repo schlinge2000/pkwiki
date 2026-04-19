@@ -14,6 +14,16 @@ Das LLM als "Compiler" — Rohdokumente rein, Wissensbasis raus.
 
 ---
 
+> **Demo:** Ich habe Claude gefragt: *„Kennst du eine Metapher für einen unpräzisen Forecast?"*
+>
+> Antwort: *„Du hast schon selbst eine genutzt — Folie 18, FINAL BO KI Webinar: ein Reh im Scheinwerferlicht. Für ein Risiko das der Forecast nicht gesehen hat."*
+>
+> Das Reh stand auf keiner Textzeile. Nur ein Bild. Gefunden weil die Pipeline Bilder wirklich liest.
+
+![Reh im Scheinwerferlicht — Metapher für einen Forecast der in die falsche Richtung leuchtet](assets/deer.png)
+
+---
+
 ## Warum nicht RAG?
 
 RAG (Retrieval-Augmented Generation) ist die Standardantwort auf "Fragen über eigene Dokumente".
