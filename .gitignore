@@ -4,8 +4,8 @@
 # Rohdokumente (grosse Binärdateien — nicht in Git)
 raw/
 
-# Obsidian-Konfiguration
-wiki/.obsidian/
+# Wiki-Vault (generierter Inhalt — OneDrive-Sync reicht)
+wiki/
 
 # Python
 __pycache__/
