@@ -1,0 +1,200 @@
+[
+  {
+    "source_file": "raw/pdfs/2023_01_26_Datensatzbeschreibung_Vorrangnetz.pdf",
+    "source_type": "pdf",
+    "seite": 1,
+    "bild_index": 1,
+    "image_path": "raw/.cache/.images/pdfs/2023_01_26_Datensatzbeschreibung_Vorrangnetz/p1-img1.jpg",
+    "beschreibung": "Zu sehen ist eine grafische Titelseite mit blauem, punktförmig verlaufendem Hintergrund und dem weißen „ivm“-Logo im Zentrum. Das Logo steht für die ivm GmbH (Integriertes Verkehrs- und Mobilitätsmanagement Region Frankfurt RheinMain). Es handelt sich um eine einfache Branding‑Grafik ohne Diagramme, Kennzahlen oder Prozessdarstellungen.",
+    "width_px": 433,
+    "height_px": 535,
+    "extracted_at": "2026-04-19T15:28:43.437978+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2023_01_26_Datensatzbeschreibung_Vorrangnetz.pdf",
+    "source_type": "pdf",
+    "seite": 1,
+    "bild_index": 2,
+    "image_path": "raw/.cache/.images/pdfs/2023_01_26_Datensatzbeschreibung_Vorrangnetz/p1-img2.jpg",
+    "beschreibung": "Zu sehen ist kein fachlicher Inhalt wie Diagramme, Karten oder Kennzahlen. Das Bild zeigt lediglich einen blauen, rautenförmigen bzw. schachbrettartigen Farbverlauf auf hellem Hintergrund ohne Beschriftungen oder grafische Elemente. Es enthält keine erkennbaren Informationen zu Prozessen, Datenstrukturen oder Verkehrsnetzen.",
+    "width_px": 132,
+    "height_px": 435,
+    "extracted_at": "2026-04-19T15:28:50.388093+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2023_01_26_Datensatzbeschreibung_Vorrangnetz.pdf",
+    "source_type": "pdf",
+    "seite": 1,
+    "bild_index": 3,
+    "image_path": "raw/.cache/.images/pdfs/2023_01_26_Datensatzbeschreibung_Vorrangnetz/p1-img3.jpg",
+    "beschreibung": "Förderhinweis mit Logo und Schriftzug des **Bundesministeriums für Verkehr und digitale Infrastruktur (BMVI)** inklusive Bundesadler und Deutschlandfarbstreifen.  \nDer Text weist darauf hin, dass das Projekt **aufgrund eines Beschlusses des Deutschen Bundestages gefördert** wird.  \nDie Grafik dient als offizielles Kennzeichen für staatlich finanzierte Projekte im Verkehrs- und Infrastrukturkontext.",
+    "width_px": 337,
+    "height_px": 337,
+    "extracted_at": "2026-04-19T15:28:58.962938+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2023_01_26_Datensatzbeschreibung_Vorrangnetz.pdf",
+    "source_type": "pdf",
+    "seite": 1,
+    "bild_index": 4,
+    "image_path": "raw/.cache/.images/pdfs/2023_01_26_Datensatzbeschreibung_Vorrangnetz/p1-img4.jpg",
+    "beschreibung": "Logo der Initiative „LKW LOTSE Region Frankfurt RheinMain“ mit einem stilisierten blauen Pfeil/Navigationselement links und der Wortmarke rechts. Der Schriftzug „LKW LOTSE“ ist hervorgehoben, darunter steht „Region Frankfurt RheinMain“. Die Grafik verweist thematisch auf Navigation bzw. Lenkung im Kontext von Lkw‑Routenmanagement.",
+    "width_px": 590,
+    "height_px": 206,
+    "extracted_at": "2026-04-19T15:29:07.539562+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2023_01_26_Datensatzbeschreibung_Vorrangnetz.pdf",
+    "source_type": "pdf",
+    "seite": 2,
+    "bild_index": 2,
+    "image_path": "raw/.cache/.images/pdfs/2023_01_26_Datensatzbeschreibung_Vorrangnetz/p2-img2.jpg",
+    "beschreibung": "Zu sehen ist ein grafisches Logo mit den Buchstaben „Vm“ in weißer Schrift vor einem blauen, punktförmigen Verlaufsmuster. Die Punkte bilden einen kreisförmigen Gradient‑Hintergrund, der von dunkelblau in der Mitte zu helleren Tönen nach außen übergeht. Es sind keine Diagramme, Kennzahlen oder Prozessdarstellungen enthalten, sondern lediglich eine stilisierte Marken- bzw. Logo-Grafik.",
+    "width_px": 92,
+    "height_px": 114,
+    "extracted_at": "2026-04-19T15:29:16.403274+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2409.17515v3 (1).pdf",
+    "source_type": "pdf",
+    "seite": 2,
+    "bild_index": 1,
+    "image_path": "raw/.cache/.images/pdfs/2409.17515v3 (1)/p2-img1.jpg",
+    "beschreibung": "Symbolische Grafik eines Dokumentenstapels mit mehreren übereinanderliegenden Seiten. Das Icon steht typischerweise für Rohdaten, Berichte oder Dokumentquellen innerhalb eines Informations- oder Datenverarbeitungssystems. Im dargestellten Kontext repräsentiert es vermutlich „Raw News“ bzw. unstrukturierte Eingabedokumente für eine Datenbank oder Analysepipeline.",
+    "width_px": 73,
+    "height_px": 65,
+    "extracted_at": "2026-04-19T15:29:24.090928+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2409.17515v3 (1).pdf",
+    "source_type": "pdf",
+    "seite": 2,
+    "bild_index": 10,
+    "image_path": "raw/.cache/.images/pdfs/2409.17515v3 (1)/p2-img10.jpg",
+    "beschreibung": "Ein einfaches Liniendiagramm mit Achsen zeigt zwei Zeitreihen: eine rote Linie mit insgesamt steigender Entwicklung und eine gelbe Linie mit schwankendem, eher seitwärts bzw. leicht fallendem Verlauf. Die Grafik symbolisiert vermutlich die Entwicklung von Kennzahlen wie Finanz- oder Wirtschaftsindikatoren über die Zeit.",
+    "width_px": 94,
+    "height_px": 122,
+    "extracted_at": "2026-04-19T15:30:14.294212+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2409.17515v3 (1).pdf",
+    "source_type": "pdf",
+    "seite": 2,
+    "bild_index": 2,
+    "image_path": "raw/.cache/.images/pdfs/2409.17515v3 (1)/p2-img2.jpg",
+    "beschreibung": "Diagramm einer „Contextual Information Database“, die verschiedene Kontextkategorien wie Finanzen, Politik, Wetter, Soziales und Unterhaltung integriert. Als Datenquellen werden u. a. News‑Medien, der GDELT‑Projekt‑Datensatz und Yahoo Finance dargestellt, die zusätzliche Informationen liefern. Enthaltene Kontextdaten umfassen Kalender- und Feiertagsinformationen, geografische Daten, Wetterdaten sowie ökonomische Indikatoren, die als ergänzende Rohdaten in das System einfließen.",
+    "width_px": 81,
+    "height_px": 77,
+    "extracted_at": "2026-04-19T15:29:35.696607+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2409.17515v3 (1).pdf",
+    "source_type": "pdf",
+    "seite": 2,
+    "bild_index": 3,
+    "image_path": "raw/.cache/.images/pdfs/2409.17515v3 (1)/p2-img3.jpg",
+    "beschreibung": "Ein blaues Datenbank‑Symbol (zylindrischer Stapel) stellt eine zentrale Datenspeicherkomponente dar. Es symbolisiert eine „Contextual Information Database“, in der strukturierte Informationen wie Nachrichten, Finanzdaten, Wetter‑ und Kalenderdaten gesammelt werden. Die Datenbank fungiert als Sammel‑ und Speicherpunkt für externe Datenquellen und Zusatzinformationen.",
+    "width_px": 69,
+    "height_px": 59,
+    "extracted_at": "2026-04-19T15:29:44.694288+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2409.17515v3 (1).pdf",
+    "source_type": "pdf",
+    "seite": 2,
+    "bild_index": 5,
+    "image_path": "raw/.cache/.images/pdfs/2409.17515v3 (1)/p2-img5.jpg",
+    "beschreibung": "Ein Liniendiagramm zeigt eine stark ansteigende Entwicklung über mehrere Datenpunkte hinweg, dargestellt durch rote Kreis‑Marker entlang einer Kurve. Die Werte steigen kontinuierlich von links unten nach rechts oben, was auf Wachstum oder steigende Kennzahlen über Zeit oder Kategorien hindeutet. Die Achsen stellen vermutlich eine zeitliche oder sequenzielle Entwicklung (x‑Achse) gegenüber einem zunehmenden Leistungs‑ oder Mengenindikator (y‑Achse) dar.",
+    "width_px": 86,
+    "height_px": 80,
+    "extracted_at": "2026-04-19T15:29:54.337981+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2409.17515v3 (1).pdf",
+    "source_type": "pdf",
+    "seite": 2,
+    "bild_index": 6,
+    "image_path": "raw/.cache/.images/pdfs/2409.17515v3 (1)/p2-img6.jpg",
+    "beschreibung": "Eine schematische Architektur zeigt eine **„Contextual Information Database“**, die verschiedene Kontextdaten sammelt, z. B. Kategorien wie Finanzen, Politik, Wetter, Soziales und Unterhaltung sowie Informationen wie Kalenderdaten, Feiertage, geografische Daten, Wetter und ökonomische Indikatoren. Diese Daten werden aus externen Quellen wie **GDELT Project, Yahoo Finance, Websites und News‑Medien** bezogen. Die Quellen liefern **Roh‑Nachrichten und ergänzende Informationen**, die in die Datenbank zur weiteren Analyse integriert werden.",
+    "width_px": 56,
+    "height_px": 65,
+    "extracted_at": "2026-04-19T15:30:02.153040+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2409.17515v3 (1).pdf",
+    "source_type": "pdf",
+    "seite": 2,
+    "bild_index": 9,
+    "image_path": "raw/.cache/.images/pdfs/2409.17515v3 (1)/p2-img9.jpg",
+    "beschreibung": "Links ist ein Dokument‑Symbol dargestellt, das strukturierte oder rohe Nachrichten‑ bzw. Textdaten repräsentiert. Rechts daneben befindet sich ein Uhr‑Symbol, das auf die zeitliche Dimension der Daten hinweist, z. B. Zeitstempel, Veröffentlichungszeitpunkte oder zeitbasierte Verarbeitung. Zusammen deutet die Grafik auf einen Prozess hin, bei dem eingehende Roh‑Nachrichten mit zeitlichen Informationen erfasst oder analysiert werden.",
+    "width_px": 82,
+    "height_px": 57,
+    "extracted_at": "2026-04-19T15:30:09.516747+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2409.17515v3 (1).pdf",
+    "source_type": "pdf",
+    "seite": 4,
+    "bild_index": 1,
+    "image_path": "raw/.cache/.images/pdfs/2409.17515v3 (1)/p4-img1.jpg",
+    "beschreibung": "Eine stilisierte Grafik einer Datenbank in Form eines blauen Zylinders mit mehreren horizontalen Ebenen. Auf den Ebenen sind Linien angedeutet, die Datensätze oder Tabellen symbolisieren. Kleine farbige Punkte stellen Statusanzeigen oder Aktivitätsindikatoren dar.",
+    "width_px": 244,
+    "height_px": 180,
+    "extracted_at": "2026-04-19T15:30:17.972716+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2409.17515v3 (1).pdf",
+    "source_type": "pdf",
+    "seite": 4,
+    "bild_index": 2,
+    "image_path": "raw/.cache/.images/pdfs/2409.17515v3 (1)/p4-img2.jpg",
+    "beschreibung": "Ein Icon zeigt einen stilisierten blauen Globus mit Längen‑ und Breitengraden. Darüber liegt ein gelbes Banner mit der Aufschrift „NEWS“. Die Grafik symbolisiert Nachrichten bzw. aktuelle Meldungen.",
+    "width_px": 96,
+    "height_px": 88,
+    "extracted_at": "2026-04-19T15:30:21.372041+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2409.17515v3 (1).pdf",
+    "source_type": "pdf",
+    "seite": 4,
+    "bild_index": 3,
+    "image_path": "raw/.cache/.images/pdfs/2409.17515v3 (1)/p4-img3.jpg",
+    "beschreibung": "Eine Liste von Zeitstempeln im 6‑Stunden‑Intervall (z. B. 6/10/19 0:00, 6/10/19 6:00 … bis 6/13/19 12:00) zeigt eine zeitliche Auflösung für Datenpunkte. Darunter stehen aggregierte Tageswerte (2019‑06‑10, 2019‑06‑11, 2019‑06‑12). Zusätzlich wird ein Abschnitt „Short‑Term Effect News“ mit einem Beispiel erwähnt: eine Nachricht über Staus zu Spitzenzeiten in Melbourne aufgrund eines größeren Freeway‑Vorfalls.",
+    "width_px": 118,
+    "height_px": 118,
+    "extracted_at": "2026-04-19T15:30:30.130155+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2409.17515v3 (1).pdf",
+    "source_type": "pdf",
+    "seite": 6,
+    "bild_index": 1,
+    "image_path": "raw/.cache/.images/pdfs/2409.17515v3 (1)/p6-img1.jpg",
+    "beschreibung": "Das Bild ist vollständig schwarz bzw. leer und enthält keine sichtbaren Diagramme, Texte, Kennzahlen, Grafiken oder Prozessdarstellungen. Es sind keine fachlichen Inhalte oder Strukturen erkennbar. Daher lässt sich kein inhaltlicher oder technischer Kontext aus dem Bild ableiten.",
+    "width_px": 1200,
+    "height_px": 658,
+    "extracted_at": "2026-04-19T15:30:35.126165+00:00"
+  },
+  {
+    "source_file": "raw/pdfs/2409.17515v3 (1).pdf",
+    "source_type": "pdf",
+    "seite": 6,
+    "bild_index": 2,
+    "image_path": "raw/.cache/.images/pdfs/2409.17515v3 (1)/p6-img2.jpg",
+    "beschreibung": "Ein Prompt‑Template zeigt eine Q&A‑Struktur zur Überarbeitung von Text über Nachrichten‑Selektionslogik für Zeitreihen‑Forecasting. Q4 fordert das Kürzen redundanter Inhalte und die Zusammenfassung aktualisierter Regeln r1 bis rn, die die Auswahl relevanter Nachrichten beeinflussen. A4 soll daraus die finale News‑Selektionslogik formulieren; anschließend beginnt eine weitere Frage (Q1) zu historischen Daten.",
+    "width_px": 1200,
+    "height_px": 792,
+    "extracted_at": "2026-04-19T15:30:41.568791+00:00"
+  },
+  {
+    "source_file": "raw/slides/FINAL BO KI Webinar.pptx",
+    "source_type": "pptx",
+    "folie": 1,
+    "shape_index": 1,
+    "image_path": "raw/.cache/.images/slides/FINAL BO KI Webinar/f1-s1.jpg",
+    "beschreibung": "Eine Person arbeitet an einem Laptop, während darüber eine grafische Darstellung eines digitalen Kopfes mit Netzwerkverbindungen und Knotenpunkten eingeblendet ist. Die Visualisierung zeigt eine KI‑ähnliche Struktur mit Datenverknüpfungen, die Analyse, Entscheidungsunterstützung und Datenverarbeitung symbolisiert. Der Finger berührt einen hervorgehobenen Punkt der Grafik, was Interaktion mit einem datengetriebenen Analyse‑ oder Entscheidungsmodell andeutet.",
+    "width_px": 1200,
+    "height_px": 800,
+    "extracted_at": "2026-04-19T15:30:45.979633+00:00"
+  }
+]
