@@ -1,0 +1,42 @@
+# vault-tree.yaml.example
+# Kopieren nach vault-tree.yaml und anpassen.
+# vault-tree.yaml ist in .gitignore (enthält interne Repo-Namen).
+
+tree:
+  - node: company
+    path: _company/
+    type: company
+    sync: sharepoint://knowledge-tree/_company
+    ingest_service: github-actions   # wer schreibt auf dieser Ebene
+    domains:                         # aktive Domain-Indizes
+      - forecasting
+      - supply-chain
+      - strategy
+      - tech
+      - research
+
+  - node: team-demand-ai
+    path: _team-demand-ai/
+    type: team
+    parent: company
+    members: [christian, bernd, steffen]
+    sync: sharepoint://knowledge-tree/_team-demand-ai
+    repos:                           # GitHub-Repos für Code-Monitoring
+      - owner: inform-group
+        repo: demand-ai
+        branch: main
+        ticket_pattern: 'DAI-\d+'
+      - owner: schlinge2000
+        repo: pkwiki
+        branch: main
+        ticket_pattern: '#\d+'
+
+  - node: personal-christian
+    path: _team-demand-ai/_personal-christian/
+    type: personal
+    parent: team-demand-ai
+    owner: christian
+    sync: onedrive://personal/knowledge-personal/
+
+poll_interval_minutes: 15
+last_poll_state: .code-watch-state.json
