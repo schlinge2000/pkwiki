@@ -16,7 +16,7 @@ Das LLM als "Compiler" — Rohdokumente rein, Wissensbasis raus.
 
 > **Demo:** Ich habe Claude gefragt: *„Kennst du eine Metapher für einen unpräzisen Forecast?"*
 >
-> Antwort: *„Du hast schon selbst eine genutzt — Folie 18, FINAL BO KI Webinar: ein Reh im Scheinwerferlicht. Für ein Risiko das der Forecast nicht gesehen hat."*
+> Antwort: *„Du hast schon selbst eine genutzt: Folie 17–18, FINAL BO KI Webinar — zuerst eine nach links ausgeleuchtete Straße, dann ein Reh im Scheinwerferlicht. Für ein Risiko das der Forecast als wenig wahrscheinliches Szenario zeigt."*
 >
 > Das Reh stand auf keiner Textzeile. Nur ein Bild. Gefunden weil die Pipeline Bilder wirklich liest.
 
