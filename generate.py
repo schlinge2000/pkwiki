@@ -347,7 +347,29 @@ def generate(outline_path: Path, template_path: Path, log: logging.Logger) -> Pa
         )
 
     log.info("Template geladen: %s", template_path.name)
-    prs = Presentation(str(template_path))
+
+    # .potx kann python-pptx nicht direkt öffnen — Content-Type im ZIP ist "template".
+    # Workaround: ZIP öffnen, [Content_Types].xml patchen (template → presentation),
+    # in temp-Datei schreiben.
+    import shutil
+    import tempfile
+    import zipfile
+
+    tmp_pptx = Path(tempfile.mktemp(suffix=".pptx"))
+    TEMPLATE_CT = "application/vnd.openxmlformats-officedocument.presentationml.template.main+xml"
+    PRESENTATION_CT = "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"
+
+    with zipfile.ZipFile(template_path, "r") as zin, zipfile.ZipFile(tmp_pptx, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "[Content_Types].xml":
+                data = data.replace(TEMPLATE_CT.encode(), PRESENTATION_CT.encode())
+            zout.writestr(item, data)
+
+    try:
+        prs = Presentation(str(tmp_pptx))
+    finally:
+        tmp_pptx.unlink(missing_ok=True)
 
     # Alle vorhandenen Folien entfernen — leere Basis
     # pptx speichert Slides in einer XML-Liste; wir löschen alle rxml-Elemente
