@@ -135,8 +135,16 @@ Ingest-Operation mit Zeitstempel, Quelle und erstellten/aktualisierten Seiten.
 ## Voraussetzungen
 
 - [`uv`](https://docs.astral.sh/uv/) — Python-Paketmanager (`winget install astral-sh.uv`)
-- Azure OpenAI Ressource mit GPT-4o-Deployment (Vision-fähig, für PPTX-Bildanalyse)
+- Azure OpenAI Ressource mit einem **leistungsstarken Modell** (Vision-fähig, für PPTX-Bildanalyse)
 - [Obsidian](https://obsidian.md) als lokaler Viewer (optional, empfohlen)
+
+### Modell-Empfehlung
+
+Die Qualität der Wissensbasis hängt direkt vom verwendeten Modell ab. Der Ingest-Schritt ist keine einfache Zusammenfassung — das Modell muss Konzepte erkennen, bestehende Seiten sinnvoll erweitern, Verbindungen zwischen Quellen herstellen und Widersprüche markieren. Ein schwächeres Modell produziert generische, schlecht verlinkte Seiten.
+
+**Empfohlen: GPT-4.1 oder neuer** (z.B. GPT-5-class Modelle sobald verfügbar)
+
+`gpt-4o` funktioniert, aber neuere Modelle liefern deutlich bessere Vernetzung und Synthesequalität. Der Unterschied ist bei komplexen, mehrere Quellen übergreifenden Konzepten deutlich spürbar.
 
 ---
 
