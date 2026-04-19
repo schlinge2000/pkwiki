@@ -472,6 +472,7 @@ def extract_images_docx(path: Path) -> list[dict]:
 def build_index() -> int:
     """
     Liest alle .meta.json aus CACHE_DIR und schreibt assets/image-index.json.
+    Anschliessend wird wiki/picture_index.md als navigierbare Wiki-Seite geschrieben.
     Gibt die Anzahl der indizierten Bilder zurueck.
     """
     ASSETS_DIR.mkdir(parents=True, exist_ok=True)
@@ -487,7 +488,142 @@ def build_index() -> int:
         encoding="utf-8",
     )
     print(f"Index geschrieben: {_rel_to_wiki(INDEX_FILE)} ({len(all_metas)} Bilder)", flush=True)
+
+    # Wiki-Seite picture_index.md schreiben
+    write_picture_index_md(all_metas)
+
     return len(all_metas)
+
+
+# ---------------------------------------------------------------------------
+# picture_index.md: navigierbare Wiki-Seite fuer den Bild-Index
+# ---------------------------------------------------------------------------
+
+def _lade_wiki_konzepte() -> list[str]:
+    """
+    Liest wiki/index.md und extrahiert alle [[wikilink]]-Bezeichner.
+    Wird fuer das automatische Keyword-Matching verwendet.
+    """
+    index_path = WIKI_ROOT / "wiki" / "index.md"
+    if not index_path.exists():
+        return []
+    import re
+    inhalt = index_path.read_text(encoding="utf-8")
+    # Alle [[bezeichner]] aus dem Index extrahieren
+    return re.findall(r"\[\[([^\]]+)\]\]", inhalt)
+
+
+def _konzepte_fuer_beschreibung(beschreibung: str, alle_konzepte: list[str]) -> list[str]:
+    """
+    Ermittelt passende Konzept-Links fuer eine Bildbeschreibung per Keyword-Matching.
+    Sucht nach Woertern aus der Beschreibung (mind. 4 Zeichen) im Konzept-Bezeichner.
+    Gibt maximal 3 passende [[konzept]]-Links zurueck.
+    """
+    if not beschreibung or not alle_konzepte:
+        return []
+
+    # Suchwoerter aus Beschreibung: Kleinbuchstaben, mind. 4 Zeichen
+    woerter = set(
+        w.lower().strip(".,;:!?()\"'")
+        for w in beschreibung.split()
+        if len(w) >= 4
+    )
+
+    treffer: list[str] = []
+    for konzept in alle_konzepte:
+        # Konzept-Bezeichner in Einzelteile zerlegen (Bindestriche als Trennzeichen)
+        konzept_teile = set(konzept.lower().replace("-", " ").split())
+        # Treffer wenn mindestens ein Suchwort im Konzept vorkommt
+        if woerter & konzept_teile:
+            treffer.append(f"[[{konzept}]]")
+        if len(treffer) >= 3:
+            break
+
+    return treffer
+
+
+def write_picture_index_md(all_metas: list[dict]) -> None:
+    """
+    Schreibt wiki/picture_index.md — eine navigierbare Wiki-Seite mit allen
+    indizierten Bildern gruppiert nach Quelldatei.
+    Konzept-Links werden per Keyword-Matching gegen wiki/index.md ermittelt.
+    """
+    wiki_dir = WIKI_ROOT / "wiki"
+    wiki_dir.mkdir(parents=True, exist_ok=True)
+    output_path = wiki_dir / "picture_index.md"
+
+    heute = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Konzepte aus Wiki-Index fuer Keyword-Matching laden
+    alle_konzepte = _lade_wiki_konzepte()
+
+    # Bilder nach Quelldatei gruppieren
+    # Schluessel: Dateiname der Quelle (ohne Pfad-Praefix)
+    from collections import defaultdict
+    gruppen: dict[str, list[dict]] = defaultdict(list)
+    for meta in all_metas:
+        source = meta.get("source_file", "Unbekannt")
+        # Nur den Dateinamen als Gruppenbezeichnung verwenden
+        source_name = Path(source).name
+        gruppen[source_name].append(meta)
+
+    # Gesamtstatistik
+    gesamt_bilder = len(all_metas)
+    gesamt_quellen = len(gruppen)
+
+    # Markdown aufbauen
+    zeilen: list[str] = [
+        "---",
+        "title: Bild-Index",
+        "type: index",
+        f"last_updated: {heute}",
+        "---",
+        "",
+        "# Bild-Index",
+        "",
+        "> Alle extrahierten Bilder aus dem Quell-Fundus — mit Beschreibung und Quellenangabe.",
+        "> Navigiere von Bildern zu Konzepten und umgekehrt.",
+        "",
+        "## Überblick",
+        "",
+        f"- **Gesamt:** {gesamt_bilder} Bilder aus {gesamt_quellen} Quellen",
+        f"- **Letzte Aktualisierung:** {heute}",
+        "",
+        "---",
+        "",
+        "## Bilder nach Quelle",
+        "",
+    ]
+
+    # Jede Quelldatei als eigenen Abschnitt ausgeben
+    for source_name in sorted(gruppen.keys()):
+        eintraege = gruppen[source_name]
+        zeilen.append(f"### {source_name}")
+        zeilen.append("")
+        zeilen.append("| Folie/Seite | Beschreibung | Konzepte |")
+        zeilen.append("|-------------|-------------|---------|")
+
+        for meta in eintraege:
+            beschreibung = (meta.get("beschreibung") or "").replace("|", "\\|").replace("\n", " ")
+
+            # Folien- oder Seiten-Nummer ermitteln
+            if meta.get("source_type") == "pptx":
+                position = str(meta.get("folie", "?"))
+            elif meta.get("source_type") == "pdf":
+                position = str(meta.get("seite", "?"))
+            else:
+                position = str(meta.get("bild_index", "?"))
+
+            # Konzept-Links per Keyword-Matching ermitteln
+            konzept_links = _konzepte_fuer_beschreibung(beschreibung, alle_konzepte)
+            konzepte_str = ", ".join(konzept_links) if konzept_links else ""
+
+            zeilen.append(f"| {position} | {beschreibung} | {konzepte_str} |")
+
+        zeilen.append("")
+
+    output_path.write_text("\n".join(zeilen), encoding="utf-8")
+    print(f"picture_index.md geschrieben: wiki/picture_index.md ({gesamt_bilder} Bilder, {gesamt_quellen} Quellen)", flush=True)
 
 
 # ---------------------------------------------------------------------------
