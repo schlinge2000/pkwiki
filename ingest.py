@@ -1,5 +1,5 @@
 # /// script
-# dependencies = ["openai", "python-pptx", "python-docx", "pdfplumber", "python-dotenv"]
+# dependencies = ["openai", "python-pptx", "python-docx", "pdfplumber", "python-dotenv", "pydantic"]
 # ///
 """
 Knowledge Wiki — Automatischer Ingest via Azure OpenAI.
@@ -11,12 +11,15 @@ Benötigt in .env:
   AZURE_OPENAI_DEPLOYMENT=gpt-4o   (oder dein Deployment-Name)
 """
 
-import json
 import sys
 import os
+import io
 import logging
 from pathlib import Path
 from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel
 
 # .env laden falls vorhanden
 try:
@@ -26,6 +29,25 @@ except ImportError:
     pass
 
 from openai import AzureOpenAI
+
+# ---------------------------------------------------------------------------
+# Response-Schema (Pydantic) — garantiert valides, typgeprüftes LLM-Output
+# ---------------------------------------------------------------------------
+
+class WikiPage(BaseModel):
+    path: str                              # relativ zu wiki/, z.B. "concepts/foo.md"
+    action: Literal["create", "update"]
+    content: str                           # vollständiger Markdown-Inhalt
+
+class NarrativeSequence(BaseModel):
+    folien: str                            # z.B. "17-18" oder "5-7"
+    titel: str                             # kurze Bezeichnung der Sequenz
+    beschreibung: str                      # Argument-Bogen in 1-3 Sätzen
+
+class IngestResponse(BaseModel):
+    pages: list[WikiPage]
+    narrative_sequences: list[NarrativeSequence] = []  # nur bei PPTX relevant
+    log_entry: str
 
 WIKI_ROOT = Path(__file__).parent
 RAW_DIR = WIKI_ROOT / "raw"
@@ -73,15 +95,21 @@ Du bekommst:
 2. Den aktuellen Index der Wiki (vorhandene Seiten)
 3. Den Inhalt des zu ingesting Dokuments
 
-Du gibst eine JSON-Antwort zurück mit allen Wiki-Seiten die erstellt oder aktualisiert werden sollen.
+Du gibst eine strukturierte JSON-Antwort zurück die exakt diesem Schema entspricht:
 
-Format:
 {
   "pages": [
     {
-      "path": "concepts/mein-konzept.md",
+      "path": "concepts/mein-konzept.md",       // relativ zu wiki/
       "action": "create" | "update",
-      "content": "--- vollständiger Markdown-Inhalt der Seite ---"
+      "content": "--- vollständiger Markdown-Inhalt ---"
+    }
+  ],
+  "narrative_sequences": [                       // nur bei PPTX, sonst leere Liste []
+    {
+      "folien": "17-18",                         // Folienbereich als String
+      "titel": "Scheinwerfer und Reh",           // kurze Bezeichnung
+      "beschreibung": "These auf Folie 17 ..."   // Argument-Bogen in 1-3 Sätzen
     }
   ],
   "log_entry": "## YYYY-MM-DD HH:MM — INGEST\\nQuelle: ...\\nNeue Seiten: ...\\nAktualisierte Seiten: ..."
@@ -153,14 +181,20 @@ def read_wiki_context() -> tuple[str, str, str]:
 
 def call_llm(source_name: str, source_content: str,
              claude_md: str, index_md: str, log_md: str,
-             log: logging.Logger) -> dict:
-    """Ruft Azure OpenAI auf und gibt geparste JSON-Antwort zurück."""
+             log: logging.Logger) -> IngestResponse:
+    """Ruft Azure OpenAI auf und gibt validiertes IngestResponse-Objekt zurück."""
     client = AzureOpenAI(
         api_key=os.environ["AZURE_OPENAI_API_KEY"],
         azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
         api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2025-04-01-preview"),
     )
     deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+
+    # Bei sehr langen Quellen kürzen damit genug Output-Tokens bleiben
+    max_source_chars = 60_000
+    if len(source_content) > max_source_chars:
+        log.warning("Quelle zu lang (%d Zeichen) — kürze auf %d", len(source_content), max_source_chars)
+        source_content = source_content[:max_source_chars] + "\n\n[... gekürzt ...]"
 
     user_message = f"""# CLAUDE.md Schema
 {claude_md}
@@ -178,62 +212,81 @@ def call_llm(source_name: str, source_content: str,
 {source_content}
 
 ---
-Erstelle nun die Wiki-Seiten für diese Quelle. Antworte ausschließlich mit validem JSON gemäß dem beschriebenen Format."""
+Erstelle nun die Wiki-Seiten für diese Quelle."""
 
     log.info("Azure OpenAI Anfrage — Deployment: %s | Quelle: %s | Textlänge: %d Zeichen",
              deployment, source_name, len(source_content))
 
-    response = client.chat.completions.create(
+    # Structured Output via Pydantic — kein manuelles JSON-Parsing mehr
+    response = client.beta.chat.completions.parse(
         model=deployment,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
-        max_completion_tokens=8000,
-        response_format={"type": "json_object"},
+        max_completion_tokens=16000,
+        response_format=IngestResponse,
     )
 
     usage = response.usage
     if usage:
         log.info("Token-Verbrauch — Prompt: %d | Completion: %d | Gesamt: %d",
                  usage.prompt_tokens, usage.completion_tokens, usage.total_tokens)
+        if usage.completion_tokens >= 15900:
+            log.warning("Antwort möglicherweise abgeschnitten (Completion = %d Tokens)", usage.completion_tokens)
 
-    raw = response.choices[0].message.content.strip()
+    result = response.choices[0].message.parsed
+    if result is None:
+        raise RuntimeError("LLM hat kein valides IngestResponse geliefert (parsed=None)")
 
-    # JSON aus Markdown-Codeblock extrahieren falls nötig
-    if raw.startswith("```"):
-        lines = raw.split("\n")
-        raw = "\n".join(lines[1:-1])
+    # Narrative Sequenzen loggen falls vorhanden
+    if result.narrative_sequences:
+        log.info("Narrative Sequenzen erkannt: %d", len(result.narrative_sequences))
+        for seq in result.narrative_sequences:
+            log.info("  Folien %s — %s", seq.folien, seq.titel)
 
-    return json.loads(raw)
+    return result
 
 
-def write_pages(pages: list[dict], log_entry: str, log: logging.Logger):
-    """Schreibt alle Wiki-Seiten und aktualisiert log.md."""
-    created, updated = [], []
+def write_pages(result: IngestResponse, log: logging.Logger) -> tuple[list[str], list[str]]:
+    """Schreibt alle Wiki-Seiten aus dem validierten IngestResponse."""
+    import time
+    lock_path = WIKI_DIR / ".ingest.lock"
+    waited = 0
+    while lock_path.exists() and waited < 300:
+        time.sleep(1)
+        waited += 1
+    lock_path.write_text(str(os.getpid()), encoding="utf-8")
+    try:
+        return _do_write_pages(result, log)
+    finally:
+        lock_path.unlink(missing_ok=True)
 
-    for page in pages:
-        # LLM gibt manchmal "wiki/concepts/foo.md" zurück obwohl WIKI_DIR schon wiki/ ist
-        page_path = page["path"].lstrip("/")
+
+def _do_write_pages(result: IngestResponse, log: logging.Logger) -> tuple[list[str], list[str]]:
+    created: list[str] = []
+    updated: list[str] = []
+
+    for page in result.pages:
+        # Pfad normalisieren — LLM gibt manchmal "wiki/concepts/foo.md" zurück
+        page_path = page.path.lstrip("/")
         if page_path.startswith("wiki/"):
             page_path = page_path[len("wiki/"):]
         path = WIKI_DIR / page_path
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        action = page.get("action", "create")
-
-        if page_path in ("log.md",):
+        if page_path == "log.md":
             # Log: neuen Eintrag prependen
             existing = path.read_text(encoding="utf-8") if path.exists() else ""
             header = existing.split("---")[0] if "---" in existing else "# Aktivitätslog\n\n> Append-only. Neueste Einträge oben.\n\n"
             rest = existing[len(header):] if existing.startswith(header) else existing
-            new_content = header + "---\n\n" + log_entry.strip() + "\n\n" + rest.lstrip("---\n")
+            new_content = header + "---\n\n" + result.log_entry.strip() + "\n\n" + rest.lstrip("---\n")
             path.write_text(new_content, encoding="utf-8")
             log.debug("wiki/log.md aktualisiert")
             continue
 
-        path.write_text(page["content"], encoding="utf-8")
-        if action == "update":
+        path.write_text(page.content, encoding="utf-8")
+        if page.action == "update":
             updated.append(page_path)
             log.info("UPDATE  %s", page_path)
         else:
@@ -269,7 +322,7 @@ def ingest(source_file: str):
         # 2. Wiki-Kontext laden
         claude_md, index_md, log_md = read_wiki_context()
 
-        # 3. LLM aufrufen
+        # 3. LLM aufrufen — gibt validiertes IngestResponse zurück
         result = call_llm(
             source_name=source_path.name,
             source_content=source_content,
@@ -280,13 +333,7 @@ def ingest(source_file: str):
         )
 
         # 4. Seiten schreiben
-        pages = result.get("pages", [])
-        log_entry = result.get(
-            "log_entry",
-            f"## {datetime.now().strftime('%Y-%m-%d %H:%M')} — INGEST\nQuelle: {source_path.name}"
-        )
-
-        created, updated = write_pages(pages, log_entry, log)
+        created, updated = write_pages(result, log)
 
         log.info("-" * 60)
         log.info("INGEST OK  —  %d neue Seiten, %d aktualisiert", len(created), len(updated))
