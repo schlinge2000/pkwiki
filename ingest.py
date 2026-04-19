@@ -34,7 +34,7 @@ WIKI_DIR = WIKI_ROOT / "wiki"
 LOGS_DIR = WIKI_ROOT / "logs"
 
 # ---------------------------------------------------------------------------
-# Logging Setup
+# Protokollierung einrichten
 # ---------------------------------------------------------------------------
 
 def setup_logging(source_name: str) -> logging.Logger:
