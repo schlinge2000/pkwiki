@@ -195,9 +195,9 @@ Obsidian erkennt Dateiänderungen live — neue Wiki-Seiten erscheinen direkt na
 ohne Neustart. Cluster im Graph View entsprechen Kernthemen.
 
 **Shortcuts:**
-- `Ctrl+O` — Schnellsuche uber alle Seiten
+- `Ctrl+O` — Schnellsuche über alle Seiten
 - `Ctrl+G` — Graph View (Vernetzung sichtbar machen)
-- `[[` tippen — Verlinkungsdialog fur manuelle Erganzungen
+- `[[` tippen — Verlinkungsdialog für manuelle Ergänzungen
 
 ---
 
@@ -206,24 +206,24 @@ ohne Neustart. Cluster im Graph View entsprechen Kernthemen.
 ```
 raw/               # Rohdokumente — hierhin neue Dateien ablegen
   pdfs/            # Papers, Reports, Whitepapers
-  slides/          # Prasentationen (PPTX)
+  slides/          # Präsentationen (PPTX)
   docs/            # Word-Dokumente
   links/           # Web-Artikel als .md-Dateien
-  inbox/           # Temporarer Eingang
+  inbox/           # Temporärer Eingang
   .cache/          # Auto-generierte Extrakte (nicht in Git)
 
 wiki/              # Die Wissensbasis — nur lokal + OneDrive-Sync
   index.md         # Inhaltsverzeichnis aller Seiten
-  log.md           # Append-only Aktivitatslog
+  log.md           # Append-only Aktivitätslog
   concepts/        # Konzept- und Technologieseiten
   entities/        # Personen, Unternehmen, Produkte
   sources/         # Zusammenfassung je Quelldokument
-  syntheses/       # Themenubergreifende Analysen
+  syntheses/       # Themenübergreifende Analysen
 
 ingest.py          # Haupt-Pipeline: Dokument → Wiki-Seiten
 extract.py         # Extraktion: PPTX/DOCX/PDF → Markdown + Vision
 watch.ps1          # Watcher: neue Dateien in raw/ → automatischer Ingest
-CLAUDE.md          # Schema & Regeln fur den LLM-Maintainer
+CLAUDE.md          # Schema & Regeln für den LLM-Maintainer
 .env.example       # Vorlage fur Azure-Credentials
 ```
 
@@ -233,36 +233,36 @@ CLAUDE.md          # Schema & Regeln fur den LLM-Maintainer
 
 | In Git | Nicht in Git |
 |--------|-------------|
-| `*.py`, `*.ps1` — Automation-Code | `wiki/` — Vault (OneDrive-Sync genugt) |
-| `CLAUDE.md` — LLM-Schema | `raw/` — Rohdokumente (zu gross, personlich) |
+| `*.py`, `*.ps1` — Automation-Code | `wiki/` — Vault (OneDrive-Sync genügt) |
+| `CLAUDE.md` — LLM-Schema | `raw/` — Rohdokumente (zu groß, persönlich) |
 | `README.md`, `.env.example`, `.gitignore` | `.env` — API-Keys |
 
-Der Vault (`wiki/`) wird uber OneDrive synchronisiert und wachst kontinuierlich.
+Der Vault (`wiki/`) wird über OneDrive synchronisiert und wächst kontinuierlich.
 Er enthalt keine Logik — nur generierten Inhalt — und muss nicht versioniert werden.
 
 ---
 
 ## Bekannte Limitierungen
 
-- **EMF/WMF-Vektorgrafiken in PPTX** konnen nicht via Vision analysiert werden — PIL unterstuzt
+- **EMF/WMF-Vektorgrafiken in PPTX** können nicht via Vision analysiert werden — PIL unterstützt
   diese Windows-Metafile-Formate nicht. Betroffene Folien werden mit einem Hinweis markiert.
-- **Sehr lange PDFs** werden auf 60.000 Zeichen gekurzt, bevor sie ans LLM gehen.
+- **Sehr lange PDFs** werden auf 60.000 Zeichen gekürzt, bevor sie ans LLM gehen.
   Bei sehr dichten Dokumenten gehen Inhalte aus dem letzten Drittel verloren.
-- **Vision-API-Kosten** sind hoher als reine Textextraktion — bei vielen grossen Slide-Decks
-  summieren sich die API-Kosten. Reine Text-PDFs laufen kostengunstig uber PyMuPDF.
+- **Vision-API-Kosten** sind höher als reine Textextraktion — bei vielen großen Slide-Decks
+  summieren sich die API-Kosten. Reine Text-PDFs laufen kostengünstig über PyMuPDF.
 
 ---
 
 ## CLAUDE.md — das LLM-Schema
 
-`CLAUDE.md` ist die zentrale Betriebsanleitung fur das LLM. Sie definiert Seitentypen,
-Frontmatter-Format, Wikilink-Konventionen, Qualitatsstandards und die drei Hauptoperationen:
+`CLAUDE.md` ist die zentrale Betriebsanleitung für das LLM. Sie definiert Seitentypen,
+Frontmatter-Format, Wikilink-Konventionen, Qualitätsstandards und die drei Hauptoperationen:
 
 - **INGEST** — Dokument zu Wiki-Seiten kompilieren
 - **QUERY** — Wissensbasis befragen (ohne RAG-Infrastruktur)
 - **LINT** — Wiki auf Widersprüche, Waisen und veraltete Einträge prüfen
 
-Wenn Claude Code im Projektverzeichnis geoffnet wird, liest er `CLAUDE.md` automatisch
+Wenn Claude Code im Projektverzeichnis geöffnet wird, liest er `CLAUDE.md` automatisch
 und weiß damit exakt, wie die Wiki gepflegt werden soll.
 
 ---
