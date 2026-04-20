@@ -102,6 +102,14 @@ Regeln:
 - pm_update.one_liner: max 100 Zeichen, deutsch, prägnant
 - Frontmatter in jeder Seite: title, type, repo, last_commit, tickets
 - Sprache: Deutsch
+
+OBSIDIAN-WIKILINKS — PFLICHT:
+- Ticket-Seiten: "Betroffene Module" als [[modul-slug]] verlinken, z.B. [[http-client]], [[api-spec]]
+  Der Slug ist der Dateiname ohne .md (Kleinbuchstaben, Bindestriche statt Leerzeichen/Sonderzeichen)
+- Modul-Seiten: Ticket-Referenzen als [[ticket-slug]] verlinken, z.B. [[661]], [[DAI-42]]
+  Ticket-Slugs: Nummer ohne # (issue-123 für #123-Format, sonst direkt 661)
+- Changelog: Ticket-Spalte als [[ticket-slug]] verlinken, z.B. [[661]] | [[DAI-42]]
+- Keine plain-text Ticket/Modul-Referenzen — immer [[...]] verwenden
 """
 
 
@@ -243,8 +251,71 @@ def write_pages(
         # PM-Update: an pm-overview.md anhängen
         _append_pm_update(result.pm_update, digest, wiki_dir)
 
+        # Repo-Index aktualisieren
+        write_repo_index(code_wiki_dir, digest.repo_name)
+
     finally:
         LOCK_FILE.unlink(missing_ok=True)
+
+
+def write_repo_index(code_wiki_dir: Path, repo_name: str) -> None:
+    """Erstellt/aktualisiert index.md mit Obsidian-Wikilinks auf alle Tickets und Module."""
+    tickets_dir = code_wiki_dir / "tickets"
+    modules_dir = code_wiki_dir / "modules"
+
+    ticket_links: list[tuple[str, str]] = []
+    module_links: list[tuple[str, str]] = []
+
+    if tickets_dir.exists():
+        for f in sorted(tickets_dir.glob("*.md")):
+            slug = f.stem
+            # Titel aus Frontmatter lesen
+            title = slug
+            try:
+                content = f.read_text(encoding="utf-8")
+                for line in content.splitlines():
+                    if line.startswith("title:"):
+                        title = line.split(":", 1)[1].strip().strip('"')
+                        break
+            except Exception:
+                pass
+            ticket_links.append((slug, title))
+
+    if modules_dir.exists():
+        for f in sorted(modules_dir.glob("**/*.md")):
+            slug = f.stem
+            rel = f.relative_to(modules_dir)
+            link_path = str(rel.with_suffix("")).replace("\\", "/")
+            title = slug
+            try:
+                content = f.read_text(encoding="utf-8")
+                for line in content.splitlines():
+                    if line.startswith("title:"):
+                        title = line.split(":", 1)[1].strip().strip('"')
+                        break
+            except Exception:
+                pass
+            module_links.append((link_path, title))
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    lines = [
+        f"# Code-Wiki: {repo_name}",
+        f"\n_Automatisch generiert — {today}_\n",
+        f"\n## Tickets ({len(ticket_links)})\n",
+    ]
+    for slug, title in ticket_links:
+        lines.append(f"- [[{slug}]] — {title}")
+
+    lines.append(f"\n## Module ({len(module_links)})\n")
+    for link_path, title in module_links:
+        slug = link_path.replace("/", "-")
+        lines.append(f"- [[{slug}]] — {title}")
+
+    lines.append(f"\n## Changelog\n\n→ [[changelog]]")
+
+    index_path = code_wiki_dir / "index.md"
+    index_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    log.info("INDEX   %s/index.md (%d tickets, %d module)", repo_name, len(ticket_links), len(module_links))
 
 
 def _append_pm_update(pm: PMUpdate, digest: CommitDigest, wiki_dir: Path) -> None:
