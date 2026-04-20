@@ -15,7 +15,7 @@ Benötigt in .env (oder Umgebungsvariablen):
     AZURE_OPENAI_ENDPOINT=https://<dein-resource>.openai.azure.com/
     AZURE_OPENAI_DEPLOYMENT=gpt-4o   (oder dein Deployment-Name)
     AZURE_OPENAI_API_VERSION=2025-04-01-preview   (optional)
-    KNOWLEDGE_TREE_ROOT=...   (optional, default: dieses Skript-Verzeichnis)
+    VAULT_ROOT=C:\Pfad\zum\Vault   (wo wiki/, raw/, assets/ liegen — default: Skript-Verzeichnis)
 """
 
 import sys
@@ -45,7 +45,7 @@ from openai import AzureOpenAI
 SCRIPT_ROOT = Path(__file__).parent
 
 # Vault-Root: kann per Env überschrieben werden (für GitHub Actions)
-VAULT_ROOT = Path(os.environ.get("KNOWLEDGE_TREE_ROOT", str(SCRIPT_ROOT)))
+VAULT_ROOT = Path(os.environ.get("VAULT_ROOT", os.environ.get("KNOWLEDGE_TREE_ROOT", str(SCRIPT_ROOT))))
 
 LOGS_DIR = VAULT_ROOT / "logs"
 

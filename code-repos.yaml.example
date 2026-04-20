@@ -1,0 +1,39 @@
+﻿# code-repos.yaml.example
+# Kopiere nach code-repos.yaml und trage deine Repos ein.
+# code-repos.yaml ist in .gitignore (enthaelt interne Repo-Namen).
+#
+# GITHUB_PAT kommt aus .env -- hier NICHT eintragen.
+# Scope benoetigt: repo (fuer private Org-Repos)
+# Token erstellen: https://github.com/settings/tokens/new?scopes=repo&description=knowledge-tree
+# WICHTIG fuer private Orgs: nach Token-Erstellung SSO autorisieren
+#   -> github.com/settings/tokens -> Configure SSO -> Org autorisieren
+
+poll_interval_minutes: 15
+last_poll_state: .code-watch-state.json
+
+repos:
+  # Eigene Repos
+  - name: pkwiki
+    owner: schlinge2000
+    repo: pkwiki
+    branch: main
+    language: python
+    ticket_pattern: '#\d+'
+    privacy: personal
+
+  - name: scenario-moe
+    owner: schlinge2000
+    repo: scenario-mixture
+    branch: main
+    language: python,typescript
+    ticket_pattern: '#\d+'
+    privacy: personal
+
+  # Private Org-Repos (PAT mit repo-Scope + SSO-Autorisierung)
+  - name: demand-ai
+    owner: inform-addone
+    repo: demand-ai
+    branch: main
+    language: python
+    ticket_pattern: 'DAI-\d+|#\d+'
+    privacy: internal
