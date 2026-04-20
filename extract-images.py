@@ -246,7 +246,16 @@ def extract_images_pptx(path: Path) -> list[dict]:
 
         shape_img_idx = 0
         for shape in slide.shapes:
-            if not hasattr(shape, "image"):
+            # Blob vorab lesen — hasattr() genuegt nicht, da python-pptx bei
+            # verlinkten Bildern ValueError statt AttributeError wirft.
+            try:
+                blob = shape.image.blob  # wirft ValueError wenn kein eingebettetes Bild
+                if not blob:
+                    continue
+            except (AttributeError, ValueError, KeyError):
+                # Kein Bild, verlinktes Bild oder GroupShape — ueberspringen
+                continue
+            except Exception:
                 continue
 
             shape_img_idx += 1
@@ -266,7 +275,10 @@ def extract_images_pptx(path: Path) -> list[dict]:
             # Bild aus Shape lesen
             try:
                 from PIL import Image
-                pil_img = Image.open(io.BytesIO(shape.image.blob))
+                # Palette-Bilder mit Transparency explizit nach RGBA konvertieren (PIL-Warning vermeiden)
+                pil_img = Image.open(io.BytesIO(blob))
+                if pil_img.mode == "P" and "transparency" in pil_img.info:
+                    pil_img = pil_img.convert("RGBA")
                 jpeg_bytes = _to_jpeg_bytes(pil_img)
                 if not jpeg_bytes:
                     print(f"    Folie {slide_num} Shape {shape_img_idx}: Konvertierung fehlgeschlagen — ueberspringe", file=sys.stderr)
@@ -274,7 +286,7 @@ def extract_images_pptx(path: Path) -> list[dict]:
                 width_px, height_px = _pil_size(Image.open(io.BytesIO(jpeg_bytes)))
             except Exception as e:
                 # EMF/WMF-Vektorgrafiken koennen nicht geoeffnet werden
-                print(f"    Folie {slide_num} Shape {shape_img_idx}: nicht lesbar ({e.__class__.__name__}) — ueberspringe", file=sys.stderr)
+                print(f"    Folie {slide_num} Shape {shape_img_idx}: nicht lesbar ({e.__class__.__name__}: {e}) — ueberspringe", file=sys.stderr)
                 continue
 
             # JPEG speichern
