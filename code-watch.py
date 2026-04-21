@@ -298,6 +298,10 @@ def poll_once(config: WatchConfig, state: dict[str, str], args: argparse.Namespa
                 log.warning("  Pipeline fehlgeschlagen für %s — überspringe", sha[:8])
                 break  # bei Fehler stoppen, nächstes Mal neu versuchen
 
+    # Manuals nur beim Gesamt-Poll prüfen, nicht bei --repo-Filter
+    if not args.repo:
+        state = watch_manuals(config, state)
+
     return state
 
 
@@ -371,10 +375,6 @@ def watch_manuals(config: "WatchConfig", state: dict) -> dict:
                 log.error("  manual-ingest.py fehlgeschlagen:\n%s", result.stderr[-1000:])
         except Exception as e:
             log.error("  Fehler beim Starten von manual-ingest.py: %s", e)
-
-    # Manuals-Watcher
-    if not args.repo:  # Manuals nur beim Gesamt-Poll, nicht bei --repo Filter
-        state = watch_manuals(config, state)
 
     return state
 

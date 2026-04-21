@@ -407,6 +407,64 @@ def render_page(
     return body
 
 
+def write_manuals_root_index(manuals_dir: Path, today: str) -> None:
+    """Erstellt/aktualisiert wiki/manuals/index.md mit allen Produkten."""
+    products = sorted([d for d in manuals_dir.iterdir() if d.is_dir()])
+    if not products:
+        return
+
+    lines = [
+        "# Handbuch-Übersicht",
+        f"\n_Automatisch generiert — {today}_\n",
+    ]
+
+    for product_dir in products:
+        product_name = product_dir.name
+        # Titel aus product-index.md lesen falls vorhanden
+        index_path = product_dir / "index.md"
+        title = product_name
+        chapter_count = 0
+        image_count = 0
+        source_file = ""
+
+        import re
+
+        if index_path.exists():
+            content = index_path.read_text(encoding="utf-8")
+            for line in content.splitlines():
+                if line.startswith("# "):
+                    title = line[2:].strip()
+                    break
+            m2 = re.search(r"Quelle: (.+?) —", content)
+            if m2:
+                source_file = m2.group(1).strip()
+
+        # Kapitel direkt aus Dateisystem zählen (robust gegen Partial-Runs)
+        chapter_count = len(list(product_dir.glob("*.md"))) - 2  # minus index.md + image-index.md
+        chapter_count = max(0, chapter_count)
+
+        # Bilder direkt aus assets/ zählen
+        assets_dir = product_dir / "assets"
+        if assets_dir.exists():
+            image_count = len(list(assets_dir.glob("*.jpg")))
+
+        lines.append(f"\n## [[{product_name}/index|{title}]]\n")
+        if source_file:
+            lines.append(f"Quelle: `{source_file}`  ")
+        meta_parts = []
+        if chapter_count:
+            meta_parts.append(f"{chapter_count} Kapitel")
+        if image_count:
+            meta_parts.append(f"{image_count} Bilder mit Beschreibung")
+        if meta_parts:
+            lines.append(", ".join(meta_parts) + "  ")
+        lines.append(f"\n→ [[{product_name}/index|Inhaltsverzeichnis]] · [[{product_name}/image-index|Bilder]]")
+
+    root_index = manuals_dir / "index.md"
+    root_index.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    log.info("ROOT-INDEX  wiki/manuals/index.md (%d Produkte)", len(products))
+
+
 def write_index(
     chapters_with_pages: list[tuple[dict, ChapterWikiPage]],
     product_name: str,
@@ -541,8 +599,14 @@ def ingest_pdf(
         chapters_with_pages.append((chapter, page))
 
     # Index + Bild-Index
-    write_index(chapters_with_pages, product_name, product_dir, pdf_path.name, today)
+    # write_index nur bei Vollläufen überschreiben — Partial-Runs (--only-chapters) würden sonst
+    # den vollständigen Index mit nur den neu generierten Kapiteln überschreiben
+    if not only_chapters:
+        write_index(chapters_with_pages, product_name, product_dir, pdf_path.name, today)
     write_image_index(all_images, product_name, product_dir, today)
+
+    # Root-Index über alle Produkte aktualisieren
+    write_manuals_root_index(MANUALS_DIR, today)
 
     doc.close()
 
