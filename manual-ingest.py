@@ -561,6 +561,9 @@ def ingest_pdf(
 
     chapters_with_pages: list[tuple[dict, ChapterWikiPage]] = []
     all_images: list[tuple[str, str, str]] = []  # (kapitel_slug, filename, description)
+    error_count = 0
+    consecutive_errors = 0
+    MAX_CONSECUTIVE_ERRORS = 3  # Abbruch bei Konnektivitätsverlust
 
     for i, chapter in enumerate(chapters, 1):
         if only_chapters and i not in only_chapters:
@@ -587,8 +590,19 @@ def ingest_pdf(
         # LLM: Kapitel → Wiki-Seite
         try:
             page = generate_chapter_page(chapter, text, images, product_name, client, deployment)
+            consecutive_errors = 0  # Erfolg: Zähler zurücksetzen
         except Exception as e:
+            error_count += 1
+            consecutive_errors += 1
             log.error("Fehler bei Kapitel '%s': %s", chapter["title"], e)
+            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                log.error(
+                    "ABBRUCH — %d Fehler in Folge. Konnektivitätsproblem? "
+                    "Bisher verarbeitet: %d/%d Kapitel.",
+                    consecutive_errors, len(chapters_with_pages), len(chapters),
+                )
+                doc.close()
+                sys.exit(1)
             continue
 
         # Datei schreiben (mit eingebetteten ![[...]] Bildern)
@@ -609,6 +623,14 @@ def ingest_pdf(
     write_manuals_root_index(MANUALS_DIR, today)
 
     doc.close()
+
+    if error_count > 0:
+        log.warning(
+            "FERTIG MIT FEHLERN — %d/%d Kapitel verarbeitet, %d Fehler, %d Bilder",
+            len(chapters_with_pages), len(chapters), error_count, len(all_images),
+        )
+        log.info("Output: %s", product_dir)
+        sys.exit(1)
 
     log.info("=" * 60)
     log.info("FERTIG — %d Kapitel-Seiten, %d Bilder beschrieben", len(chapters_with_pages), len(all_images))
