@@ -22,11 +22,26 @@ class RepoConfig(BaseModel):
     code_wiki_path: str = ""                           # relative to vault root, auto-derived if empty
 
 
+class ManualConfig(BaseModel):
+    file: str                           # Dateiname in watch_dir, z.B. "Handbuch.pdf"
+    product: str                        # Produkt-Slug, z.B. "addone-bo-admin"
+    max_level: int = 2                  # TOC-Tiefe
+    skip_images: bool = False
+
+
+class ManualsWatchConfig(BaseModel):
+    watch_dir: str = "raw/manuals"      # relativ zu VAULT_ROOT
+    default_max_level: int = 2
+    skip_images: bool = False
+    products: list[ManualConfig] = []
+
+
 class WatchConfig(BaseModel):
     github_token: str
     repos: list[RepoConfig]
     poll_interval_minutes: int = 15
     last_poll_state_file: str = ".code-watch-state.json"
+    manuals: ManualsWatchConfig | None = None
 
 
 class TicketRef(BaseModel):

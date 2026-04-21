@@ -78,6 +78,7 @@ CONFIG_FILE = SCRIPT_ROOT / "code-repos.yaml"   # im Code-Verzeichnis, nicht im 
 GITHUB_API = "https://api.github.com"
 EXTRACT_SCRIPT = SCRIPT_ROOT / "code-extract.py"
 INGEST_SCRIPT = SCRIPT_ROOT / "code-ingest.py"
+MANUAL_SCRIPT = SCRIPT_ROOT / "manual-ingest.py"
 
 # ---------------------------------------------------------------------------
 # Konfiguration laden
@@ -296,6 +297,84 @@ def poll_once(config: WatchConfig, state: dict[str, str], args: argparse.Namespa
             else:
                 log.warning("  Pipeline fehlgeschlagen für %s — überspringe", sha[:8])
                 break  # bei Fehler stoppen, nächstes Mal neu versuchen
+
+    return state
+
+
+# ---------------------------------------------------------------------------
+# Manuals-Watcher
+# ---------------------------------------------------------------------------
+
+
+def _file_mtime(path: Path) -> float:
+    """Gibt mtime als float zurück, 0.0 wenn Datei nicht existiert."""
+    try:
+        return path.stat().st_mtime
+    except FileNotFoundError:
+        return 0.0
+
+
+def watch_manuals(config: "WatchConfig", state: dict) -> dict:
+    """Prüft raw/manuals/ auf neue oder geänderte PDFs und startet manual-ingest.py."""
+    from schemas import ManualsWatchConfig
+
+    mcfg: ManualsWatchConfig | None = config.manuals
+    if not mcfg:
+        return state
+
+    manuals_dir = VAULT_ROOT / mcfg.watch_dir
+    if not manuals_dir.exists():
+        log.debug("Manuals-Verzeichnis nicht gefunden: %s", manuals_dir)
+        return state
+
+    log.info("Prüfe Handbücher in %s ...", manuals_dir)
+
+    for manual in mcfg.products:
+        pdf_path = manuals_dir / manual.file
+        if not pdf_path.exists():
+            log.debug("  PDF nicht gefunden: %s", manual.file)
+            continue
+
+        state_key = f"manual:{manual.product}"
+        current_mtime = _file_mtime(pdf_path)
+        stored_mtime = state.get(state_key, 0.0)
+
+        if current_mtime <= stored_mtime:
+            log.debug("  %s unverändert — überspringe", manual.file)
+            continue
+
+        log.info("  NEU/GEÄNDERT: %s → starte manual-ingest.py", manual.file)
+
+        cmd = [
+            "uv", "run", str(MANUAL_SCRIPT),
+            str(pdf_path),
+            "--product", manual.product,
+            "--max-level", str(manual.max_level),
+        ]
+        if manual.skip_images or mcfg.skip_images:
+            cmd.append("--skip-images")
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=str(VAULT_ROOT),
+            )
+            if result.returncode == 0:
+                state[state_key] = current_mtime
+                save_state(state)
+                log.info("  OK — %s ingested", manual.product)
+            else:
+                log.error("  manual-ingest.py fehlgeschlagen:\n%s", result.stderr[-1000:])
+        except Exception as e:
+            log.error("  Fehler beim Starten von manual-ingest.py: %s", e)
+
+    # Manuals-Watcher
+    if not args.repo:  # Manuals nur beim Gesamt-Poll, nicht bei --repo Filter
+        state = watch_manuals(config, state)
 
     return state
 
