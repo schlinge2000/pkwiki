@@ -22,7 +22,6 @@ try:
     resp = client.chat.completions.create(
         model=deployment,
         messages=[{"role": "user", "content": "Antworte mit: OK"}],
-        max_tokens=5,
     )
     print(f"OK — {deployment} antwortet: {resp.choices[0].message.content}")
     sys.exit(0)

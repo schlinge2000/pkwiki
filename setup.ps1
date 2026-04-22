@@ -1,4 +1,4 @@
-# setup.ps1 — Knowledge Tree Ersteinrichtung
+# setup.ps1 - Knowledge Tree Ersteinrichtung
 #
 # Fuehrt folgende Schritte aus:
 #   1. Prueft Voraussetzungen (uv, git)
@@ -23,7 +23,7 @@ Write-Host "  Knowledge Tree Setup" -ForegroundColor Cyan
 Write-Host "=================================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ── 1. Voraussetzungen ─────────────────────────────────────────────────────
+# -- 1. Voraussetzungen ----------------------------------------------------
 
 Write-Host "[1/4] Pruefe Voraussetzungen..." -ForegroundColor Yellow
 
@@ -38,7 +38,7 @@ if ($missing.Count -gt 0) {
 }
 Write-Host "  OK (uv + git vorhanden)" -ForegroundColor Green
 
-# ── 2. .env erstellen ──────────────────────────────────────────────────────
+# -- 2. .env erstellen -----------------------------------------------------
 
 Write-Host ""
 Write-Host "[2/4] Konfiguration (.env)..." -ForegroundColor Yellow
@@ -47,7 +47,7 @@ $envFile = Join-Path $ScriptRoot ".env"
 $envExample = Join-Path $ScriptRoot ".env.example"
 
 if (Test-Path $envFile) {
-    Write-Host "  .env bereits vorhanden — wird nicht ueberschrieben." -ForegroundColor DarkGray
+    Write-Host "  .env bereits vorhanden - wird nicht ueberschrieben." -ForegroundColor DarkGray
     $existingEnv = Get-Content $envFile -Raw
 } else {
     if (-not (Test-Path $envExample)) {
@@ -95,7 +95,7 @@ if ($envContent -match 'VAULT_ROOT=<user>') {
     Write-Host "  VAULT_ROOT bereits gesetzt: $VaultRoot" -ForegroundColor DarkGray
 }
 
-# ── 3. Vault-Struktur anlegen ─────────────────────────────────────────────
+# -- 3. Vault-Struktur anlegen ---------------------------------------------
 
 Write-Host ""
 Write-Host "[3/4] Vault-Verzeichnisstruktur anlegen..." -ForegroundColor Yellow
@@ -152,12 +152,17 @@ if (-not (Test-Path $logPath)) {
 
 Write-Host "  Vault-Struktur OK." -ForegroundColor Green
 
-# ── 4. Verbindungstest ────────────────────────────────────────────────────
+# -- 4. Verbindungstest ----------------------------------------------------
 
 Write-Host ""
 Write-Host "[4/4] Verbindung testen..." -ForegroundColor Yellow
 
+# uv schreibt Download-Fortschritt nach stderr. Unter ErrorActionPreference=Stop
+# wuerde das als terminierender Fehler interpretiert, obwohl uv sauber laeuft.
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 $testResult = & uv run --with openai --with python-dotenv "$ScriptRoot\test-connection.py" 2>&1
+$ErrorActionPreference = $prevEAP
 if ($LASTEXITCODE -eq 0) {
     Write-Host "  Azure OpenAI: OK" -ForegroundColor Green
 } else {
@@ -166,7 +171,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "  Bitte AZURE_OPENAI_ENDPOINT und AZURE_OPENAI_API_KEY in .env pruefen." -ForegroundColor Yellow
 }
 
-# ── Zusammenfassung ───────────────────────────────────────────────────────
+# -- Zusammenfassung -------------------------------------------------------
 
 Write-Host ""
 Write-Host "=================================================" -ForegroundColor Cyan
