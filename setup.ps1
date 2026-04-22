@@ -5,6 +5,7 @@
 #   2. .env aus .env.example erstellen (interaktiv)
 #   3. Vault-Verzeichnisstruktur anlegen
 #   4. Verbindung testen (Azure OpenAI Ping)
+#   5. Wiki-Sync als Windows Scheduled Task registrieren (alle 15 Min)
 #
 # Usage: .\setup.ps1
 # Usage: .\setup.ps1 -VaultRoot "C:\MeinVault" -NonInteractive
@@ -171,6 +172,48 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "  Bitte AZURE_OPENAI_ENDPOINT und AZURE_OPENAI_API_KEY in .env pruefen." -ForegroundColor Yellow
 }
 
+# -- 5. Wiki-Sync als geplante Aufgabe registrieren -----------------------
+
+Write-Host ""
+Write-Host "[5/5] Wiki-Sync Scheduled Task (alle 15 Minuten)..." -ForegroundColor Yellow
+
+$taskName = "KnowledgeTree-WikiSync"
+$existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+
+if ($existing) {
+    Write-Host "  Task '$taskName' bereits vorhanden - wird aktualisiert." -ForegroundColor DarkGray
+}
+
+try {
+    $action = New-ScheduledTaskAction `
+        -Execute "uv" `
+        -Argument "run `"$ScriptRoot\wiki-sync.py`"" `
+        -WorkingDirectory $ScriptRoot
+
+    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+        -RepetitionInterval (New-TimeSpan -Minutes 15) `
+        -RepetitionDuration ([TimeSpan]::MaxValue)
+
+    $settings = New-ScheduledTaskSettingsSet `
+        -MultipleInstances IgnoreNew `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
+        -StartWhenAvailable
+
+    Register-ScheduledTask `
+        -TaskName $taskName `
+        -Action $action `
+        -Trigger $trigger `
+        -Settings $settings `
+        -Description "Synchronisiert Wiki-MD-Dateien aus OneDrive nach knowledge-wiki-archive auf GitHub." `
+        -Force | Out-Null
+
+    Write-Host "  Task '$taskName' registriert (alle 15 Min)." -ForegroundColor Green
+    Write-Host "  Verwalten: Aufgabenplanung > '$taskName'" -ForegroundColor DarkGray
+} catch {
+    Write-Host "  Task konnte nicht registriert werden: $_" -ForegroundColor Red
+    Write-Host "  Manuell ausfuehren: uv run `"$ScriptRoot\wiki-sync.py`"" -ForegroundColor Yellow
+}
+
 # -- Zusammenfassung -------------------------------------------------------
 
 Write-Host ""
@@ -184,6 +227,7 @@ Write-Host ""
 Write-Host "  Naechste Schritte:" -ForegroundColor Cyan
 Write-Host "  1. Dokument ingestieren:" -ForegroundColor White
 Write-Host "     uv run `"$ScriptRoot\ingest.py`" `"$VaultRoot\raw\slides\Meine-Praesentation.pptx`"" -ForegroundColor DarkGray
-Write-Host "  2. Code-Monitoring starten (GITHUB_PAT in .env setzen):" -ForegroundColor White
+Write-Host "  2. Wiki-Sync laeuft automatisch alle 15 Min (Task: $taskName)" -ForegroundColor White
+Write-Host "  3. Code-Monitoring starten (GITHUB_PAT in .env setzen):" -ForegroundColor White
 Write-Host "     uv run `"$ScriptRoot\code-watch.py`" --loop" -ForegroundColor DarkGray
 Write-Host ""
