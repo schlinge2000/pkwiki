@@ -159,11 +159,22 @@ cd knowledge-wiki
 cp .env.example .env
 # .env oeffnen und Werte setzen (siehe unten)
 
-# 3. Watcher starten — ueberwacht raw/ auf neue Dateien
-powershell -ExecutionPolicy Bypass -File .\watch.ps1
+# 3. Watcher als Windows Scheduled Task registrieren (startet automatisch bei Login):
+powershell -ExecutionPolicy Bypass -File .\register-task.ps1
 
-# Oder: als Windows Scheduled Task installieren (startet automatisch bei Login)
-powershell -ExecutionPolicy Bypass -File .\install-watcher.ps1
+# Oder manuell starten (ohne Task Scheduler):
+powershell -ExecutionPolicy Bypass -File .\watch.ps1
+```
+
+### Watcher-Status prüfen
+
+```powershell
+# Status beider Watcher (Wiki + Knowledge Tree):
+powershell -ExecutionPolicy Bypass -File .\watcher-status.ps1
+
+# Manuell starten/stoppen:
+Start-ScheduledTask -TaskName "KnowledgeWikiWatcher"
+Stop-ScheduledTask  -TaskName "KnowledgeWikiWatcher"
 ```
 
 ### Konfiguration (`.env`)

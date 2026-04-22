@@ -140,6 +140,22 @@ def extract_if_needed(source_path: Path, log: logging.Logger) -> Path:
     if suffix == ".md":
         return source_path
 
+    if suffix == ".txt":
+        # Kein Extraction-Schritt nötig — Text direkt lesen und cachen
+        try:
+            rel = source_path.relative_to(RAW_DIR)
+        except ValueError:
+            rel = Path(source_path.name)
+        cache_path = CACHE_DIR / rel.with_suffix(".md")
+        if not cache_path.exists():
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            text = source_path.read_text(encoding="utf-8", errors="replace")
+            cache_path.write_text(f"# {source_path.stem}\n\n{text}", encoding="utf-8")
+            log.info("TXT gecacht: %s", cache_path.name)
+        else:
+            log.info("Cache-Treffer: %s", cache_path.name)
+        return cache_path
+
     if suffix not in (".pptx", ".docx", ".pdf"):
         log.warning("Unbekannter Dateityp: %s — überspringe", suffix)
         sys.exit(0)
