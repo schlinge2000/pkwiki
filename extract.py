@@ -100,8 +100,15 @@ def _vision_api_call_once(images_b64: list[str], slide_context: str, slide_num: 
     return [line.strip() for line in result_text.splitlines() if line.strip()]
 
 
+class VisionAPIError(Exception):
+    """Nicht-behebarer Vision-API-Fehler (Konnektivität, Auth, etc.)."""
+
+
 def describe_slide_images(images_b64: list[str], slide_context: str, slide_num: int) -> list[str]:
-    """Beschreibt Bilder einer Folie via Vision-API mit Retry bei Rate-Limit (max. 4 Versuche)."""
+    """Beschreibt Bilder einer Folie via Vision-API mit Retry bei Rate-Limit (max. 4 Versuche).
+
+    Raises VisionAPIError bei Konnektivitäts- oder Auth-Fehlern (nicht bei Rate-Limit).
+    """
     if not images_b64:
         return []
     for attempt in range(4):
@@ -114,13 +121,16 @@ def describe_slide_images(images_b64: list[str], slide_context: str, slide_num: 
                 print(f"  Rate-Limit (Folie {slide_num}), warte {wait}s...", flush=True)
                 time.sleep(wait)
             else:
-                print(f"  Vision-Fehler Folie {slide_num}: {e}", file=sys.stderr)
-                return [f"[Vision-Fehler: {e}]"]
-    return [f"[Vision-Fehler: Rate-Limit nach 4 Versuchen]"]
+                # Konnektivitätsfehler, Auth-Fehler o.ä. — nicht still schlucken
+                raise VisionAPIError(f"Folie {slide_num}: {e}") from e
+    raise VisionAPIError(f"Folie {slide_num}: Rate-Limit nach 4 Versuchen")
 
 
 def _process_slide(args: tuple) -> tuple[int, list[str], list[str]]:
-    """Verarbeitet eine Folie: Text extrahieren + Bilder beschreiben (ThreadPoolExecutor-kompatibel)."""
+    """Verarbeitet eine Folie: Text extrahieren + Bilder beschreiben (ThreadPoolExecutor-kompatibel).
+
+    Raises VisionAPIError bei Konnektivitätsproblemen (propagiert aus describe_slide_images).
+    """
     slide_idx, slide, use_vision = args
     slide_num = slide_idx + 1
     text_lines: list[str] = []
@@ -137,9 +147,12 @@ def _process_slide(args: tuple) -> tuple[int, list[str], list[str]]:
     # Bilder zu JPEG konvertieren (nur wenn Vision aktiv)
     if use_vision:
         for shape in slide.shapes:
-            if not hasattr(shape, "image"):
-                continue
             try:
+                # hasattr allein reicht nicht — shape.image kann ValueError werfen
+                # wenn das Bild verknüpft (nicht eingebettet) ist
+                if not hasattr(shape, "image"):
+                    continue
+                _ = shape.image  # Probe-Zugriff um ValueError frühzeitig zu fangen
                 from PIL import Image
                 img = Image.open(io.BytesIO(shape.image.blob))
                 jpeg = to_jpeg_bytes(img)
@@ -149,15 +162,21 @@ def _process_slide(args: tuple) -> tuple[int, list[str], list[str]]:
                 # EMF/WMF-Vektorgrafiken koennen von PIL nicht geoefffnet werden — ueberspringen
                 pass
 
-    # Vision-API aufrufen falls Bilder vorhanden
+    # Vision-API aufrufen falls Bilder vorhanden — VisionAPIError propagiert nach oben
     slide_context = " ".join(text_lines)
     image_descs = describe_slide_images(images_b64, slide_context, slide_num) if images_b64 else []
 
     return slide_num, text_lines, image_descs
 
 
+MAX_VISION_ERRORS = 3  # Ab dieser Anzahl Verbindungsfehler wird abgebrochen
+
+
 def extract_pptx(path: Path) -> str:
-    """Extrahiert PPTX: Text + Vision-Bildbeschreibungen, parallel pro Folie."""
+    """Extrahiert PPTX: Text + Vision-Bildbeschreibungen, parallel pro Folie.
+
+    Raises RuntimeError wenn zu viele Vision-API-Fehler auftreten (Konnektivitätsverlust).
+    """
     from pptx import Presentation
 
     use_vision = bool(os.environ.get("AZURE_OPENAI_API_KEY"))
@@ -166,14 +185,26 @@ def extract_pptx(path: Path) -> str:
     print(f"  {total} Folien | Vision: {'aktiv' if use_vision else 'inaktiv'}", flush=True)
 
     results: dict[int, tuple[list[str], list[str]]] = {}
+    vision_errors = 0
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         args_list = [(i, slide, use_vision) for i, slide in enumerate(prs.slides)]
         futures = {executor.submit(_process_slide, args): args[0] for args in args_list}
         for future in as_completed(futures):
-            slide_num, text_lines, image_descs = future.result()
-            results[slide_num] = (text_lines, image_descs)
-            print(f"  Folie {slide_num}/{total} ({len(image_descs)} Bildbeschreibungen)", flush=True)
+            try:
+                slide_num, text_lines, image_descs = future.result()
+                results[slide_num] = (text_lines, image_descs)
+                print(f"  Folie {slide_num}/{total} ({len(image_descs)} Bildbeschreibungen)", flush=True)
+            except VisionAPIError as e:
+                vision_errors += 1
+                slide_idx = futures[future]
+                print(f"  FEHLER Folie {slide_idx + 1}: {e}", file=sys.stderr)
+                results[slide_idx + 1] = ([], [])
+                if vision_errors >= MAX_VISION_ERRORS:
+                    raise RuntimeError(
+                        f"Extraktion abgebrochen — {vision_errors} Vision-API-Fehler in Folge. "
+                        "Konnektivitätsproblem? Cache wird nicht geschrieben."
+                    ) from e
 
     # Ausgabe in Folien-Reihenfolge zusammensetzen
     lines = [f"# {path.stem}\n", f"**Quelle:** {path.name}\n"]
@@ -264,15 +295,19 @@ def extract(file_path: str) -> Path:
 
     print(f"Extrahiere: {path.name}", flush=True)
 
-    if suffix == ".pptx":
-        content = extract_pptx(path)
-    elif suffix == ".docx":
-        content = extract_docx(path)
-    elif suffix == ".pdf":
-        content = extract_pdf(path)
-    else:
-        print(f"Kein Extraktor fuer Dateityp '{suffix}' — ueberspringe.")
-        sys.exit(0)
+    try:
+        if suffix == ".pptx":
+            content = extract_pptx(path)
+        elif suffix == ".docx":
+            content = extract_docx(path)
+        elif suffix == ".pdf":
+            content = extract_pdf(path)
+        else:
+            print(f"Kein Extraktor fuer Dateityp '{suffix}' — ueberspringe.")
+            sys.exit(0)
+    except RuntimeError as e:
+        print(f"FEHLER: {e}", file=sys.stderr)
+        sys.exit(1)
 
     # Cache-Pfad: raw/.cache/<unterordner>/<dateiname>.md
     raw_root = path.parent

@@ -12,20 +12,85 @@ Du bist der Maintainer dieser persönlichen Wissensbasis. Deine Aufgabe ist es, 
 ## Verzeichnisstruktur
 
 ```
-raw/          # Unveränderliche Quellen — NUR LESEN, niemals modifizieren
-  pdfs/       # Papers, Reports, Whitepapers
-  slides/     # Präsentationen (PPTX, PDF)
-  docs/       # Word-Dokumente, Notizen
-  links/      # Web-Artikel als .md-Dateien
+raw/                   # Unveränderliche Quellen — NUR LESEN, niemals modifizieren
+  pdfs/                # Papers, Reports, Whitepapers
+  slides/              # Präsentationen (PPTX)
+  docs/                # Word-Dokumente, Textdateien (.docx, .txt)
+  links/               # Web-Artikel als .md
+  inbox/               # Unsortierter Eingang
+  manuals/             # PDF-Handbücher (eigene Pipeline: manual-ingest.py)
+  .cache/              # Intern: extrahierte Texte + Bilder (nicht anfassen)
 
-wiki/         # Du pflegst alles hier
-  index.md    # Inhaltsverzeichnis aller Wiki-Seiten
-  log.md      # Append-only Aktivitätslog
-  concepts/   # Eine Seite pro Konzept oder Technologie
-  entities/   # Personen, Unternehmen, Produkte, Organisationen
-  sources/    # Eine Zusammenfassungsseite pro Rohdokument
-  syntheses/  # Themenübergreifende Muster und Verbindungen
+wiki/                  # Alles hier wird von Dir gepflegt
+  index.md             # Inhaltsverzeichnis aller Wiki-Seiten
+  log.md               # Append-only Aktivitätslog
+  picture_index.md     # Menschenlesbarer Bild-Index (für QUERY/Präsentationen)
+
+  concepts/            # Eine Seite pro Konzept oder Technologie
+  entities/            # Personen, Unternehmen, Produkte, Organisationen
+  sources/             # Eine Zusammenfassungsseite pro Rohdokument
+  syntheses/           # Themenübergreifende Muster und Verbindungen
+
+  code-wiki/           # Code-Wissensbasis — automatisch generiert via code-ingest.py
+    demand-ai/
+      index.md         # Projektübersicht mit Modul- und Ticket-Links
+      changelog.md     # Chronologischer Commit-Log
+      modules/         # Eine Seite pro Modul/Domäne (z.B. forecasting-pipeline.md)
+        <submodul>/    # Unterordner für größere Module (z.B. client-library/, customers/)
+      tickets/         # Eine Seite pro Ticket (DAI-661.md, DAI-663.md, ...)
+    scenario-mixture/
+      index.md
+      changelog.md
+      modules/         # Frontend/Backend-Module (api.md, forecast-ui.md, ...)
+        planning/      # Planungs-Unterordner
+      tickets/         # #1.md, #14.md, ... (GitHub-Issues)
+
+  manuals/             # Produkthandbücher — automatisch generiert via manual-ingest.py
+    index.md           # Übersicht aller Produkte mit Kapitelzahlen und Bild-Counts
+    addone-bo/         # ADD*ONE Bestandsoptimierung Benutzerhandbuch
+      index.md         # Kapitelübersicht mit Wikilinks
+      image-index.md   # Alle Bilder mit Obsidian-Embeds (![[...]]) und Beschreibungen
+      assets/          # Extrahierte Bilder als .jpg
+      <kapitel>.md     # Eine Seite pro TOC-Eintrag
+    addone-bo-admin/   # ADD*ONE BO Administratorhandbuch
+      index.md
+      image-index.md
+      assets/
+      <kapitel>.md
+    addone-bo-ls/      # ADD*ONE BO Leistungsbeschreibung 2026
+      index.md
+      assets/          # (leer — keine UI-Screenshots in diesem Dokument)
+      <kapitel>.md
 ```
+
+---
+
+## Automatisierung
+
+### watch.ps1 — Datei-Watcher (raw/ außer manuals/)
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\watch.ps1"
+```
+- Überwacht `raw/pdfs/`, `raw/slides/`, `raw/docs/`, `raw/links/` auf neue Dateien
+- Ruft automatisch `ingest.py <datei>` auf
+- **Startup-Scan:** beim Start werden alle Dateien ohne Cache-Eintrag nachverarbeitet
+- `raw/manuals/` wird bewusst ignoriert — eigene Pipeline
+
+### manual-ingest.py — PDF-Handbücher
+```bash
+uv run manual-ingest.py raw/manuals/Handbuch.pdf --product produkt-slug --max-level 2
+uv run manual-ingest.py raw/manuals/foo.pdf --dry-run          # Kapitelstruktur anzeigen
+uv run manual-ingest.py raw/manuals/foo.pdf --only-chapters 6  # Nur Kapitel 6 neu generieren
+```
+- Erzeugt `wiki/manuals/<produkt>/` mit Kapitelseiten, Bild-Index, Bilder in `assets/`
+- Wird automatisch vom `code-watch.py` (knowledge-tree) getriggert wenn PDF neu/geändert
+
+### code-watch.py — GitHub-Commits + Handbücher (knowledge-tree)
+```bash
+uv run code-watch.py --loop   # Daemon: GitHub-Commits + manuals/
+```
+- Pollt GitHub-Repos auf neue Commits → code-extract.py → code-ingest.py
+- Prüft Änderungen in `raw/manuals/` per mtime und startet manual-ingest.py
 
 ---
 
@@ -36,7 +101,7 @@ wiki/         # Du pflegst alles hier
 ---
 title: Name des Konzepts
 type: concept
-domain: ai | business | tech | cross  # Themengebiet
+domain: ai | business | tech | cross
 sources: [raw/pdfs/paper1.pdf, raw/slides/vortrag2.pptx]
 related: ["[[anderes-konzept]]", "[[entity-name]]"]
 confidence: high | medium | low
@@ -63,7 +128,7 @@ title: Titel des Dokuments
 type: source
 source_file: raw/pdfs/dateiname.pdf
 source_type: paper | slide | doc | article | talk
-date: YYYY-MM-DD  # Datum des Originals, falls bekannt
+date: YYYY-MM-DD
 key_concepts: ["[[konzept-1]]", "[[konzept-2]]"]
 last_updated: YYYY-MM-DD
 ---
@@ -81,12 +146,41 @@ last_updated: YYYY-MM-DD
 ---
 ```
 
+### Code-Wiki-Seite (`wiki/code-wiki/<projekt>/`)
+```yaml
+---
+title: Modul- oder Ticket-Titel
+type: code-module | code-ticket
+project: demand-ai | scenario-mixture
+last_updated: YYYY-MM-DD
+---
+```
+- Modul-Seiten: Architektur, Verantwortlichkeiten, Abhängigkeiten, offene Punkte
+- Ticket-Seiten: Beschreibung, betroffene Module als `[[modul-slug]]`, Status
+- `[[wikilinks]]` zwischen Modulen und Tickets
+
+### Handbuch-Seite (`wiki/manuals/<produkt>/`)
+```yaml
+---
+title: "Produktname › Kapitelname"
+type: manual-chapter
+product: addone-bo | addone-bo-admin | addone-bo-ls
+generated: YYYY-MM-DD
+keywords: [...]
+---
+```
+- Kapitel-Seiten mit Schritt-für-Schritt-Anleitungen, UI-Elementen fett
+- Bilder inline eingebettet: `![[dateiname.jpg]]`
+- Suche über Keywords, Querverweise auf andere Kapitel als `[[kapitel-slug]]`
+
 ---
 
 ## Wikilink-Konvention
 - Interne Links immer als `[[seiten-name]]` (Dateiname ohne .md, kebab-case)
-- Mehrere verwandte Konzepte immer verlinken — Vernetzung ist der Kernwert
-- Neue Konzepte, die noch keine Seite haben: als `[[neues-konzept]]` verlinken, dann Seite anlegen
+- Code-Wiki: `[[modul-slug]]` für Module, `[[661]]` für Tickets (DAI-661)
+- Handbücher: `[[kapitel-slug]]` für Kapitelverweise innerhalb eines Produkts
+- Bilder einbetten: `![[dateiname.jpg]]` (Obsidian-Syntax)
+- Neue Konzepte ohne Seite: als `[[neues-konzept]]` verlinken, dann Seite anlegen
 
 ---
 
@@ -118,10 +212,12 @@ Wenn der Nutzer sagt "ingest [Datei]" oder "ingest die neuen Dateien in raw/":
 Wenn der Nutzer eine inhaltliche Frage stellt:
 
 1. Lese `wiki/index.md` um relevante Seiten zu identifizieren
-2. Lese die relevanten Seiten
-3. Synthetisiere eine Antwort mit Verweisen auf Wiki-Seiten und Originalquellen
-4. Falls die Antwort neue, wertvolle Erkenntnisse enthält: als neue Synthese-Seite speichern
-5. Logge die Query in `wiki/log.md`
+2. Bei Code-Fragen: `wiki/code-wiki/<projekt>/index.md` lesen
+3. Bei Handbuch-Fragen: `wiki/manuals/index.md` → passendes Produkt → Kapitel
+4. Lese die relevanten Seiten
+5. Synthetisiere eine Antwort mit Verweisen auf Wiki-Seiten und Originalquellen
+6. Falls die Antwort neue, wertvolle Erkenntnisse enthält: als neue Synthese-Seite speichern
+7. Logge die Query in `wiki/log.md`
 
 ---
 
@@ -155,7 +251,73 @@ Report als strukturierte Liste, dann Fixes durchführen.
 ## Wichtige Regeln
 
 - **Niemals** Dateien in `raw/` modifizieren
-- **Immer** `log.md` aktualisieren nach jeder Operation
-- **Immer** `index.md` aktualisieren wenn neue Seiten angelegt werden
+- **Niemals** in `wiki/code-wiki/` oder `wiki/manuals/` manuell schreiben — diese werden automatisch generiert
+- **Immer** `log.md` aktualisieren nach jeder manuellen Operation
+- **Immer** `index.md` aktualisieren wenn neue Seiten in concepts/entities/sources/syntheses angelegt werden
 - Bestehende Seiten erweitern statt Duplikate anlegen
 - Bei Unsicherheit über Kategorisierung: `domain: cross` verwenden
+
+---
+
+## Templates & Präsentationen
+
+### INFORM Corporate Master
+```
+templates/inform-master.pptx   # Sauberes Template – nur Master, keine Content-Slides
+```
+Layouts (Master 0):
+- `title slide + rhomboid` — Titelfolie
+- `headline + text`        — Standard-Content-Slide (Bullet-Hierarchie)
+- `section slide`          — Zwischenfolie / Trenner
+- `agenda`                 — Agenda-Folie
+- `text slide + rhomboid`  — Text mit Rhombus-Deko
+- `headline only` / `headline + rhomboid` / `empty slide` / `title slide + full image`
+
+**Pattern für neue Präsentationen (python-pptx):**
+```python
+prs = Presentation("templates/inform-master.pptx")
+master = prs.slide_masters[0]
+layouts = {l.name: l for l in master.slide_layouts}
+# Neue Slides hinzufügen BEVOR der Template-Placeholder-Slide entfernt wird
+s1 = prs.slides.add_slide(layouts['headline + text'])
+# ... alle Slides hinzufügen ...
+# Am Ende: Original-Placeholder-Slide entfernen (slide1 im Template)
+prs.slides._sldIdLst.remove(prs.slides._sldIdLst[0])
+prs.save("output/praesentation.pptx")
+```
+Wichtig: Erst alle neuen Slides adden, dann den ersten (Original) entfernen — sonst entstehen ZIP-Duplikate.
+
+---
+
+## Bilder & Visuelles Asset-Verzeichnis
+
+### Bildindex
+```
+assets/image-index.json      # Maschinenlesbarer Index aller extrahierten Bilder
+wiki/picture_index.md        # Menschenlesbarer Index (für QUERY)
+wiki/manuals/*/image-index.md  # Handbuch-Bilder pro Produkt (mit ![[...]]-Embeds)
+wiki/manuals/*/assets/       # Extrahierte Handbuch-Screenshots als .jpg
+```
+
+### Bilder suchen (für QUERY oder Präsentationserstellung)
+1. `wiki/picture_index.md` lesen — enthält Beschreibungen aller Bilder aus slides/pdfs/docs
+2. `wiki/manuals/<produkt>/image-index.md` für Handbuch-Screenshots
+3. Nach Stichwörtern suchen (Grep auf `assets/image-index.json`)
+4. Bildpfade aus slides/pdfs:
+   ```
+   raw/.cache/.images/<unterordner>/<dateiname>_slide<N>.jpg   # PPTX-Slides
+   raw/.cache/.images/<unterordner>/<dateiname>_page<N>.jpg    # PDF-Seiten
+   ```
+
+### Extraktion (nur bei neuen Dateien nötig)
+```bash
+# Einzelne Datei (Text + Vision):
+uv run extract.py raw/slides/datei.pptx
+
+# Alle neuen Dateien (Batch-Vision für Bilder):
+uv run extract-images.py
+
+# Nur Index neu aufbauen (keine API-Calls):
+uv run extract-images.py --index-only
+```
+Voraussetzung: `.env` mit `AZURE_OPENAI_API_KEY` und `AZURE_OPENAI_ENDPOINT`.
