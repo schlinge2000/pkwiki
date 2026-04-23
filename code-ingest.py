@@ -401,12 +401,14 @@ Beispiele:
 def main() -> None:
     args = parse_args()
 
-    # CommitDigest laden
+    # CommitDigest laden — immer als Bytes einlesen, damit Windows nicht stdin
+    # über die ANSI-Codepage dekodiert (cp1252) und UTF-8-JSON dabei korrumpiert.
+    # Pydantic akzeptiert bytes und dekodiert selbst als UTF-8.
     if args.file:
-        raw = Path(args.file).read_text(encoding="utf-8")
+        raw: bytes = Path(args.file).read_bytes()
     else:
         log.info("Lese CommitDigest von stdin...")
-        raw = sys.stdin.read()
+        raw = sys.stdin.buffer.read()
 
     digest = CommitDigest.model_validate_json(raw)
 
