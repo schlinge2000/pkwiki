@@ -29,10 +29,12 @@ knowledge-tree/              ← Vault-Root (SharePoint)
 | `extract.py` | PPTX/PDF/DOCX → Markdown + Vision API |
 | `code-extract.py` | GitHub Commit-Diff → CommitDigest |
 | `code-ingest.py` | CommitDigest → code-wiki/ + wiki/meta/ |
-| `code-watch.py` | GitHub API Poller für Repo-Monitoring |
+| `code-watch.py` | GitHub API Poller für Repo-Monitoring (triggert `code-extract` + `code-ingest`) |
 | `tree-synthesize.py` | Upward Aggregation Personal→Team→Company |
 | `batch-ingest.ps1` | Massen-Ingest aller Quelldateien |
 | `setup-vault.ps1` | OneDrive-Sync + Obsidian-Setup für neue User |
+| `setup.ps1` | Ersteinrichtung: .env, Vault-Struktur, MetaSync-Task |
+| `sync-watchers.ps1` | Syncht `watchers.json` → Windows Scheduled Tasks (create/update/remove) |
 
 ## Wissensdomänen (Sharded Domain Index)
 
@@ -91,6 +93,91 @@ updated: YYYY-MM-DD
 3. **LLM-Hauptaufruf** — erstellt 3–10 Wiki-Seiten inkl. log.md-Eintrag
 4. **Seiten schreiben** — mit Lock-Datei für parallele Ingest-Prozesse
 5. **Index-Update** — `update_domain_index()` schreibt `index-{domain}.md` + `index.md`
+
+## Watcher-System
+
+Scheduled Tasks (`KnowledgeTree-*`) werden aus einer deklarativen Config im
+Vault verwaltet. Neue Watcher hinzufügen = JSON-Eintrag anhängen, ohne
+`setup.ps1` neu laufen zu lassen.
+
+### Dateien
+
+| Pfad | Rolle |
+|------|-------|
+| `knowledge-tree/watchers.json` | Template, wird beim ersten Setup in den Vault kopiert |
+| `$VAULT_ROOT/watchers.json` | **Aktive Config** — hier editieren |
+| `knowledge-tree/sync-watchers.ps1` | Syncht Config → Scheduled Tasks |
+| `knowledge-tree/setup.ps1` | Kopiert Template, registriert MetaSync-Task |
+
+### Config-Schema
+
+```json
+{
+  "watchers": [
+    {
+      "name": "WikiSync",
+      "cwd": "C:\\code\\knowledge-tree",
+      "script": "wiki-sync.py",
+      "args": [],
+      "interval_minutes": 15,
+      "timeout_minutes": 10,
+      "description": "..."
+    }
+  ]
+}
+```
+
+- `name` → Task wird `KnowledgeTree-<name>` registriert
+- `cwd` → Script-Wurzel (pro Eintrag separat, damit weitere Code-Projekte
+  ihre Watcher einfach anhängen können)
+- `script` → Python-Datei relativ zu `cwd`, wird via `uv run` aufgerufen
+- `args` → optional, zusätzliche CLI-Argumente
+- `interval_minutes` → Trigger-Intervall
+- `timeout_minutes` → Maximum pro Ausführung (Task wird sonst abgebrochen)
+
+### MetaSync (Live-Reload)
+
+`setup.ps1` registriert **einen** Bootstrap-Task `KnowledgeTree-MetaSync`,
+der alle 15 Min `sync-watchers.ps1` ausführt. Der Sync:
+
+1. Liest `$VAULT_ROOT/watchers.json`
+2. **CREATE** fehlende Tasks, **UPDATE** geänderte, **DELETE** Tasks deren
+   Eintrag entfernt wurde (außer `MetaSync` selbst)
+
+Änderungen wirken so binnen 15 Min. Manuell sofort triggern:
+
+```powershell
+Start-ScheduledTask -TaskName KnowledgeTree-MetaSync
+# oder direkt:
+powershell -ExecutionPolicy Bypass -File .\sync-watchers.ps1
+```
+
+### Watcher aus anderem Code-Projekt beisteuern
+
+Eintrag an `$VAULT_ROOT/watchers.json` anhängen, `cwd` zeigt auf den
+Projekt-Root — z.B.:
+
+```json
+{
+  "name": "DemandAIAnalyzer",
+  "cwd": "C:\\code\\demand-ai",
+  "script": "analyze.py",
+  "args": ["--watch"],
+  "interval_minutes": 30,
+  "timeout_minutes": 20,
+  "description": "Demand AI Nightly-Analyse"
+}
+```
+
+Voraussetzung: das Zielskript läuft mit `uv run` aus dem angegebenen `cwd`
+und beendet sich nach einem Durchlauf (keine eigene Endlosschleife).
+
+### Konvention: Single-Poll statt Loop
+
+Watcher-Skripte führen **einen** Durchlauf aus und beenden sich. Der Task
+Scheduler taktet das Intervall (analog zu cron). `code-watch.py` wird ohne
+`--loop` aufgerufen — der `--loop`-Modus existiert nur noch für manuelles
+Debuggen.
 
 ## Basis
 

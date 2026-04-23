@@ -1,0 +1,20 @@
+{
+  "watchers": [
+    {
+      "name": "WikiSync",
+      "script": "wiki-sync.py",
+      "args": [],
+      "interval_minutes": 15,
+      "timeout_minutes": 10,
+      "description": "Synchronisiert Wiki-MD-Dateien aus OneDrive nach knowledge-wiki-archive auf GitHub."
+    },
+    {
+      "name": "CodeWatch",
+      "script": "code-watch.py",
+      "args": [],
+      "interval_minutes": 15,
+      "timeout_minutes": 60,
+      "description": "Pollt konfigurierte GitHub-Repos auf neue Commits und triggert die Code-Wiki-Pipeline."
+    }
+  ]
+}

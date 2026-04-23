@@ -26,7 +26,7 @@ Write-Host ""
 
 # -- 1. Voraussetzungen ----------------------------------------------------
 
-Write-Host "[1/4] Pruefe Voraussetzungen..." -ForegroundColor Yellow
+Write-Host "[1/5] Pruefe Voraussetzungen..." -ForegroundColor Yellow
 
 $missing = @()
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { $missing += "uv (winget install astral-sh.uv)" }
@@ -42,7 +42,7 @@ Write-Host "  OK (uv + git vorhanden)" -ForegroundColor Green
 # -- 2. .env erstellen -----------------------------------------------------
 
 Write-Host ""
-Write-Host "[2/4] Konfiguration (.env)..." -ForegroundColor Yellow
+Write-Host "[2/5] Konfiguration (.env)..." -ForegroundColor Yellow
 
 $envFile = Join-Path $ScriptRoot ".env"
 $envExample = Join-Path $ScriptRoot ".env.example"
@@ -99,7 +99,7 @@ if ($envContent -match 'VAULT_ROOT=<user>') {
 # -- 3. Vault-Struktur anlegen ---------------------------------------------
 
 Write-Host ""
-Write-Host "[3/4] Vault-Verzeichnisstruktur anlegen..." -ForegroundColor Yellow
+Write-Host "[3/5] Vault-Verzeichnisstruktur anlegen..." -ForegroundColor Yellow
 
 $dirs = @(
     "wiki",
@@ -156,7 +156,7 @@ Write-Host "  Vault-Struktur OK." -ForegroundColor Green
 # -- 4. Verbindungstest ----------------------------------------------------
 
 Write-Host ""
-Write-Host "[4/4] Verbindung testen..." -ForegroundColor Yellow
+Write-Host "[4/5] Verbindung testen..." -ForegroundColor Yellow
 
 # uv schreibt Download-Fortschritt nach stderr. Unter ErrorActionPreference=Stop
 # wuerde das als terminierender Fehler interpretiert, obwohl uv sauber laeuft.
@@ -172,47 +172,82 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "  Bitte AZURE_OPENAI_ENDPOINT und AZURE_OPENAI_API_KEY in .env pruefen." -ForegroundColor Yellow
 }
 
-# -- 5. Wiki-Sync als geplante Aufgabe registrieren -----------------------
+# -- 5. Watcher-Config in Vault kopieren + MetaSync registrieren -----------
 
 Write-Host ""
-Write-Host "[5/5] Wiki-Sync Scheduled Task (alle 15 Minuten)..." -ForegroundColor Yellow
+Write-Host "[5/5] Watcher-Setup..." -ForegroundColor Yellow
 
-$taskName = "KnowledgeTree-WikiSync"
-$existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+# (a) Default-watchers.json aus Repo in $VAULT_ROOT kopieren (mit cwd).
+#     Damit koennen weitere Code-Projekte ihre Watcher einfach an die Datei
+#     im Vault anhaengen.
 
-if ($existing) {
-    Write-Host "  Task '$taskName' bereits vorhanden - wird aktualisiert." -ForegroundColor DarkGray
+$vaultWatchersFile = Join-Path $VaultRoot "watchers.json"
+$templateFile = Join-Path $ScriptRoot "watchers.json"
+
+if (Test-Path $vaultWatchersFile) {
+    Write-Host "  watchers.json im Vault vorhanden - wird nicht ueberschrieben: $vaultWatchersFile" -ForegroundColor DarkGray
+} elseif (-not (Test-Path $templateFile)) {
+    Write-Host "  ! Template $templateFile fehlt - ueberspringe." -ForegroundColor Red
+} else {
+    try {
+        $tmpl = Get-Content $templateFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        foreach ($w in $tmpl.watchers) {
+            if (-not $w.cwd) {
+                $w | Add-Member -NotePropertyName cwd -NotePropertyValue $ScriptRoot -Force
+            }
+        }
+        $tmpl | ConvertTo-Json -Depth 5 | Set-Content $vaultWatchersFile -Encoding UTF8
+        Write-Host "  watchers.json angelegt: $vaultWatchersFile" -ForegroundColor Green
+    } catch {
+        Write-Host "  ! watchers.json konnte nicht angelegt werden: $_" -ForegroundColor Red
+    }
 }
 
-try {
-    $action = New-ScheduledTaskAction `
-        -Execute "uv" `
-        -Argument "run `"$ScriptRoot\wiki-sync.py`"" `
-        -WorkingDirectory $ScriptRoot
+# (b) MetaSync-Task registrieren — liest alle 15 Min watchers.json neu
+#     und syncht die Scheduled Tasks (create/update/remove).
 
-    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
-        -RepetitionInterval (New-TimeSpan -Minutes 15) `
-        -RepetitionDuration ([TimeSpan]::MaxValue)
+$metaTaskName = "KnowledgeTree-MetaSync"
+$syncScript = Join-Path $ScriptRoot "sync-watchers.ps1"
 
-    $settings = New-ScheduledTaskSettingsSet `
-        -MultipleInstances IgnoreNew `
-        -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
-        -StartWhenAvailable
+if (-not (Test-Path $syncScript)) {
+    Write-Host "  ! sync-watchers.ps1 fehlt - MetaSync nicht registriert." -ForegroundColor Red
+} else {
+    try {
+        $action = New-ScheduledTaskAction `
+            -Execute "powershell.exe" `
+            -Argument "-ExecutionPolicy Bypass -NoProfile -File `"$syncScript`" -WatchersFile `"$vaultWatchersFile`"" `
+            -WorkingDirectory $ScriptRoot
 
-    Register-ScheduledTask `
-        -TaskName $taskName `
-        -Action $action `
-        -Trigger $trigger `
-        -Settings $settings `
-        -Description "Synchronisiert Wiki-MD-Dateien aus OneDrive nach knowledge-wiki-archive auf GitHub." `
-        -Force | Out-Null
+        $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+            -RepetitionInterval (New-TimeSpan -Minutes 15) `
+            -RepetitionDuration (New-TimeSpan -Days 9999)
 
-    Write-Host "  Task '$taskName' registriert (alle 15 Min)." -ForegroundColor Green
-    Write-Host "  Verwalten: Aufgabenplanung > '$taskName'" -ForegroundColor DarkGray
-} catch {
-    Write-Host "  Task konnte nicht registriert werden: $_" -ForegroundColor Red
-    Write-Host "  Manuell ausfuehren: uv run `"$ScriptRoot\wiki-sync.py`"" -ForegroundColor Yellow
+        $settings = New-ScheduledTaskSettingsSet `
+            -MultipleInstances IgnoreNew `
+            -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+            -StartWhenAvailable
+
+        Register-ScheduledTask `
+            -TaskName $metaTaskName `
+            -Action $action `
+            -Trigger $trigger `
+            -Settings $settings `
+            -Description "Synchronisiert watchers.json mit Windows Scheduled Tasks (alle 15 Min)." `
+            -Force | Out-Null
+
+        Write-Host "  OK  $metaTaskName (alle 15 Min, liest $vaultWatchersFile)" -ForegroundColor Green
+    } catch {
+        Write-Host "  ! $metaTaskName konnte nicht registriert werden: $_" -ForegroundColor Red
+    }
+
+    # (c) Einmalig jetzt ausfuehren, damit die Watcher nicht bis zum ersten
+    #     MetaSync-Tick warten muessen.
+    Write-Host "  Erste Synchronisation..." -ForegroundColor DarkGray
+    & powershell -ExecutionPolicy Bypass -NoProfile -File $syncScript -WatchersFile $vaultWatchersFile
 }
+
+Write-Host "  Verwalten: Aufgabenplanung > Task 'KnowledgeTree-*'" -ForegroundColor DarkGray
+Write-Host "  Neue Watcher: $vaultWatchersFile editieren - wirkt beim naechsten MetaSync." -ForegroundColor DarkGray
 
 # -- Zusammenfassung -------------------------------------------------------
 
@@ -227,7 +262,8 @@ Write-Host ""
 Write-Host "  Naechste Schritte:" -ForegroundColor Cyan
 Write-Host "  1. Dokument ingestieren:" -ForegroundColor White
 Write-Host "     uv run `"$ScriptRoot\ingest.py`" `"$VaultRoot\raw\slides\Meine-Praesentation.pptx`"" -ForegroundColor DarkGray
-Write-Host "  2. Wiki-Sync laeuft automatisch alle 15 Min (Task: $taskName)" -ForegroundColor White
-Write-Host "  3. Code-Monitoring starten (GITHUB_PAT in .env setzen):" -ForegroundColor White
-Write-Host "     uv run `"$ScriptRoot\code-watch.py`" --loop" -ForegroundColor DarkGray
+Write-Host "  2. Watcher laufen automatisch (Aufgabenplanung > 'KnowledgeTree-*')" -ForegroundColor White
+Write-Host "     Neue Watcher hinzufuegen: $vaultWatchersFile editieren" -ForegroundColor DarkGray
+Write-Host "     -> MetaSync registriert/entfernt Tasks innerhalb 15 Min automatisch" -ForegroundColor DarkGray
+Write-Host "  3. Fuer Code-Monitoring: GITHUB_PAT und code-repos.yaml setzen" -ForegroundColor White
 Write-Host ""
