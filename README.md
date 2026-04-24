@@ -58,6 +58,8 @@ Vault verwaltet. Neue Watcher hinzufügen = JSON-Eintrag anhängen, ohne
       "cwd": "C:\\code\\knowledge-tree",
       "script": "wiki-sync.py",
       "args": [],
+      "runner": "uv",
+      "trigger": "interval",
       "interval_minutes": 15,
       "timeout_minutes": 10,
       "description": "..."
@@ -69,10 +71,16 @@ Vault verwaltet. Neue Watcher hinzufügen = JSON-Eintrag anhängen, ohne
 - `name` → Task wird `KnowledgeTree-<name>` registriert
 - `cwd` → Script-Wurzel (pro Eintrag separat, damit weitere Code-Projekte
   ihre Watcher einfach anhängen können)
-- `script` → Python-Datei relativ zu `cwd`, wird via `uv run` aufgerufen
+- `script` → Datei relativ zu `cwd` (Python oder `.ps1`)
 - `args` → optional, zusätzliche CLI-Argumente
-- `interval_minutes` → Trigger-Intervall
-- `timeout_minutes` → Maximum pro Ausführung
+- `runner` → `"uv"` (default, ruft `uv run <script>`) oder `"powershell"`
+  (ruft `powershell.exe -File <script>` für `.ps1`-Watcher)
+- `trigger` → `"interval"` (default, Single-Poll alle N Min) oder
+  `"at_logon"` (Daemon, startet beim User-Login — z.B. für langlaufende
+  `FileSystemWatcher`-Skripte)
+- `interval_minutes` → Trigger-Intervall (nur bei `trigger: "interval"`)
+- `timeout_minutes` → Maximum pro Ausführung (nur bei `trigger: "interval"`;
+  `at_logon`-Daemons laufen unbegrenzt)
 
 ### MetaSync (Live-Reload)
 
@@ -111,34 +119,53 @@ Projekt-Root — z.B.:
 Voraussetzung: das Zielskript läuft mit `uv run` aus dem angegebenen `cwd`
 und beendet sich nach einem Durchlauf (keine eigene Endlosschleife).
 
-### File-Watcher via `scan-raw.py`
+### File-Watcher: zwei Muster
 
-Für Projekte, deren `ingest.py` pro Datei aufgerufen wird (z.B. pkwiki),
-liefert `scan-raw.py` einen generischen Wrapper. Er scannt ein Verzeichnis,
-pflegt einen State (`path → mtime`) und ruft den Ingest-Befehl für neue
-oder geänderte Dateien auf. Neustarts holen Verpasstes automatisch nach.
-
-Beispiel-Eintrag für pkwiki:
+**1. Projekt hat eigenen FileSystemWatcher-Daemon** (z.B. pkwiki's `watch.ps1`
+— Echtzeit-Reaktion auf `Created`-Events, Startup-Catchup inklusive).
+Einfach als PowerShell-Skript mit `at_logon`-Trigger eintragen:
 
 ```json
 {
-  "name": "PkwikiIngest",
-  "cwd": "C:\\code\\knowledge-tree",
-  "script": "scan-raw.py",
-  "args": [
-    "--watch-dir",  "C:\\code\\knowledge-wiki\\raw",
-    "--ingest-cwd", "C:\\code\\knowledge-wiki",
-    "--ingest-cmd", "uv run ingest.py",
-    "--state-file", "C:\\code\\knowledge-wiki\\.scan-state.json"
-  ],
-  "interval_minutes": 1,
-  "timeout_minutes": 30,
-  "description": "pkwiki: neue Dateien in raw/ ingesten"
+  "name": "PkwikiWatch",
+  "cwd": "C:\\code\\knowledge-wiki",
+  "script": "watch.ps1",
+  "runner": "powershell",
+  "trigger": "at_logon",
+  "description": "pkwiki FileSystemWatcher (Echtzeit raw/-Ingest)"
 }
 ```
 
-`interval_minutes: 1` ist das Minimum des Windows Task Schedulers — für
-File-Ingest (PDF/PPTX dauert ohnehin länger) reicht das.
+Der Task startet beim Login und läuft unbegrenzt. Kein Polling, kein
+`interval_minutes`. Migration aus vorhandenem `register-task.ps1`: alten
+Task unregistern, Eintrag hier ergänzen, MetaSync manuell triggern.
+
+**2. Projekt hat nur einen Per-Datei-Ingest-Aufruf** (kein eigener Watcher)
+— dann `scan-raw.py` als generischer Wrapper:
+
+```json
+{
+  "name": "SomeProjectIngest",
+  "cwd": "C:\\code\\knowledge-tree",
+  "script": "scan-raw.py",
+  "args": [
+    "--watch-dir",  "C:\\code\\some-project\\raw",
+    "--ingest-cwd", "C:\\code\\some-project",
+    "--ingest-cmd", "uv run ingest.py",
+    "--state-file", "C:\\code\\some-project\\.scan-state.json"
+  ],
+  "interval_minutes": 1,
+  "timeout_minutes": 30
+}
+```
+
+`scan-raw.py` scannt periodisch, pflegt einen State (`path → mtime`) und
+ruft den Ingest-Befehl pro neuer/geänderter Datei auf. `interval_minutes: 1`
+ist das Windows-Task-Scheduler-Minimum — für File-Ingest reicht das, weil
+die Verarbeitung selbst länger dauert.
+
+Faustregel: **Muster 1 bevorzugen, wenn das Projekt schon einen eigenen
+Watcher-Daemon mitbringt** (bessere Reaktionszeit, geringerer Overhead).
 
 ### Konvention: Single-Poll statt Loop
 

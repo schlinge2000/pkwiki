@@ -181,35 +181,54 @@ Projekt-Root — z.B.:
 Voraussetzung: das Zielskript läuft mit `uv run` aus dem angegebenen `cwd`
 und beendet sich nach einem Durchlauf (keine eigene Endlosschleife).
 
-### File-Watcher via `scan-raw.py`
+### File-Watcher: zwei Muster
 
-Für Projekte, deren `ingest.py` pro Datei aufgerufen wird (z.B. pkwiki), gibt
-es `scan-raw.py` als generischen Wrapper. Er scannt ein Verzeichnis, pflegt
-einen State (`path → mtime`) und ruft den Ingest-Befehl für neue oder
-geänderte Dateien auf. Fehlschläge werden im State nicht vermerkt — der
-nächste Tick probiert sie erneut, Neustarts holen Verpasstes nach.
+**1. Projekt hat eigenen Daemon** (z.B. pkwiki's `watch.ps1` mit nativem
+`FileSystemWatcher`): per `runner: "powershell"` + `trigger: "at_logon"`
+direkt einbinden. Echtzeit-Reaktion, kein Polling.
 
 ```json
 {
-  "name": "PkwikiIngest",
-  "cwd": "C:\\code\\knowledge-tree",
-  "script": "scan-raw.py",
-  "args": [
-    "--watch-dir",  "C:\\code\\knowledge-wiki\\raw",
-    "--ingest-cwd", "C:\\code\\knowledge-wiki",
-    "--ingest-cmd", "uv run ingest.py",
-    "--state-file", "C:\\code\\knowledge-wiki\\.scan-state.json"
-  ],
-  "interval_minutes": 1,
-  "timeout_minutes": 30,
-  "description": "pkwiki: neue Dateien in raw/ ingesten"
+  "name": "PkwikiWatch",
+  "cwd": "C:\\code\\knowledge-wiki",
+  "script": "watch.ps1",
+  "runner": "powershell",
+  "trigger": "at_logon",
+  "description": "pkwiki FileSystemWatcher (Echtzeit raw/-Ingest)"
 }
 ```
 
-`interval_minutes: 1` ist das Minimum des Windows Task Schedulers — für
-File-Ingest (PDF/PPTX/DOCX dauert ohnehin länger) reicht das. Für echte
-Sub-Sekunden-Reaktivität wäre ein separater `watchdog`-Daemon nötig, der
-das Scheduled-Task-Modell verlässt.
+`at_logon`-Tasks laufen unbegrenzt; `interval_minutes`/`timeout_minutes`
+entfallen. Migration aus vorhandenem `register-task.ps1`: alten Task
+unregistern, Eintrag in `watchers.json` ergänzen, MetaSync triggern.
+
+**2. Projekt hat nur Per-Datei-Ingest** (kein eigener Watcher): `scan-raw.py`
+als generischer Polling-Wrapper. Scannt periodisch, pflegt State
+(`path → mtime`), ruft den Ingest-Befehl pro neuer/geänderter Datei.
+Fehlschläge werden nicht im State vermerkt — nächster Tick probiert erneut,
+Neustarts holen Verpasstes nach.
+
+```json
+{
+  "name": "SomeProjectIngest",
+  "cwd": "C:\\code\\knowledge-tree",
+  "script": "scan-raw.py",
+  "args": [
+    "--watch-dir",  "C:\\code\\some-project\\raw",
+    "--ingest-cwd", "C:\\code\\some-project",
+    "--ingest-cmd", "uv run ingest.py",
+    "--state-file", "C:\\code\\some-project\\.scan-state.json"
+  ],
+  "interval_minutes": 1,
+  "timeout_minutes": 30
+}
+```
+
+`interval_minutes: 1` ist das Windows-Task-Scheduler-Minimum — für
+File-Ingest (PDF/PPTX/DOCX dauert ohnehin länger) reicht das.
+
+Faustregel: Muster 1 bevorzugen, wenn das Projekt bereits einen eigenen
+Watcher-Daemon mitbringt — bessere Reaktionszeit, weniger Overhead.
 
 ### Konvention: Single-Poll statt Loop
 
