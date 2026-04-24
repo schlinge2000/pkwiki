@@ -35,6 +35,7 @@ knowledge-tree/              ← Vault-Root (SharePoint)
 | `setup-vault.ps1` | OneDrive-Sync + Obsidian-Setup für neue User |
 | `setup.ps1` | Ersteinrichtung: .env, Vault-Struktur, MetaSync-Task |
 | `sync-watchers.ps1` | Syncht `watchers.json` → Windows Scheduled Tasks (create/update/remove) |
+| `scan-raw.py` | Generischer File-Watcher: scannt ein Verzeichnis + triggert Ingest pro neuer Datei |
 
 ## Wissensdomänen (Sharded Domain Index)
 
@@ -119,6 +120,8 @@ Vault verwaltet. Neue Watcher hinzufügen = JSON-Eintrag anhängen, ohne
       "cwd": "C:\\code\\knowledge-tree",
       "script": "wiki-sync.py",
       "args": [],
+      "runner": "uv",
+      "trigger": "interval",
       "interval_minutes": 15,
       "timeout_minutes": 10,
       "description": "..."
@@ -130,10 +133,16 @@ Vault verwaltet. Neue Watcher hinzufügen = JSON-Eintrag anhängen, ohne
 - `name` → Task wird `KnowledgeTree-<name>` registriert
 - `cwd` → Script-Wurzel (pro Eintrag separat, damit weitere Code-Projekte
   ihre Watcher einfach anhängen können)
-- `script` → Python-Datei relativ zu `cwd`, wird via `uv run` aufgerufen
+- `script` → Datei relativ zu `cwd` (Python oder `.ps1`)
 - `args` → optional, zusätzliche CLI-Argumente
-- `interval_minutes` → Trigger-Intervall
-- `timeout_minutes` → Maximum pro Ausführung (Task wird sonst abgebrochen)
+- `runner` → `"uv"` (default, ruft `uv run <script>`) oder `"powershell"`
+  (ruft `powershell.exe -File <script>` für `.ps1`-Watcher)
+- `trigger` → `"interval"` (default, Single-Poll alle N Min) oder
+  `"at_logon"` (Daemon, startet beim User-Login — z.B. für langlaufende
+  `FileSystemWatcher`-Skripte)
+- `interval_minutes` → Trigger-Intervall (nur bei `trigger: "interval"`)
+- `timeout_minutes` → Maximum pro Ausführung (nur bei `trigger: "interval"`;
+  `at_logon`-Daemons laufen unbegrenzt)
 
 ### MetaSync (Live-Reload)
 
@@ -171,6 +180,36 @@ Projekt-Root — z.B.:
 
 Voraussetzung: das Zielskript läuft mit `uv run` aus dem angegebenen `cwd`
 und beendet sich nach einem Durchlauf (keine eigene Endlosschleife).
+
+### File-Watcher via `scan-raw.py`
+
+Für Projekte, deren `ingest.py` pro Datei aufgerufen wird (z.B. pkwiki), gibt
+es `scan-raw.py` als generischen Wrapper. Er scannt ein Verzeichnis, pflegt
+einen State (`path → mtime`) und ruft den Ingest-Befehl für neue oder
+geänderte Dateien auf. Fehlschläge werden im State nicht vermerkt — der
+nächste Tick probiert sie erneut, Neustarts holen Verpasstes nach.
+
+```json
+{
+  "name": "PkwikiIngest",
+  "cwd": "C:\\code\\knowledge-tree",
+  "script": "scan-raw.py",
+  "args": [
+    "--watch-dir",  "C:\\code\\knowledge-wiki\\raw",
+    "--ingest-cwd", "C:\\code\\knowledge-wiki",
+    "--ingest-cmd", "uv run ingest.py",
+    "--state-file", "C:\\code\\knowledge-wiki\\.scan-state.json"
+  ],
+  "interval_minutes": 1,
+  "timeout_minutes": 30,
+  "description": "pkwiki: neue Dateien in raw/ ingesten"
+}
+```
+
+`interval_minutes: 1` ist das Minimum des Windows Task Schedulers — für
+File-Ingest (PDF/PPTX/DOCX dauert ohnehin länger) reicht das. Für echte
+Sub-Sekunden-Reaktivität wäre ein separater `watchdog`-Daemon nötig, der
+das Scheduled-Task-Modell verlässt.
 
 ### Konvention: Single-Poll statt Loop
 

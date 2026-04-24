@@ -31,6 +31,7 @@ Scheduled Tasks.
 | `rebuild-index.py` | Vollständiger Index-Rebuild |
 | `setup.ps1` | Ersteinrichtung + MetaSync-Task |
 | `sync-watchers.ps1` | Syncht `watchers.json` → Windows Scheduled Tasks |
+| `scan-raw.py` | Generischer File-Watcher (scannt Verzeichnis, triggert Ingest pro Datei) |
 
 ## Watcher-System
 
@@ -109,6 +110,35 @@ Projekt-Root — z.B.:
 
 Voraussetzung: das Zielskript läuft mit `uv run` aus dem angegebenen `cwd`
 und beendet sich nach einem Durchlauf (keine eigene Endlosschleife).
+
+### File-Watcher via `scan-raw.py`
+
+Für Projekte, deren `ingest.py` pro Datei aufgerufen wird (z.B. pkwiki),
+liefert `scan-raw.py` einen generischen Wrapper. Er scannt ein Verzeichnis,
+pflegt einen State (`path → mtime`) und ruft den Ingest-Befehl für neue
+oder geänderte Dateien auf. Neustarts holen Verpasstes automatisch nach.
+
+Beispiel-Eintrag für pkwiki:
+
+```json
+{
+  "name": "PkwikiIngest",
+  "cwd": "C:\\code\\knowledge-tree",
+  "script": "scan-raw.py",
+  "args": [
+    "--watch-dir",  "C:\\code\\knowledge-wiki\\raw",
+    "--ingest-cwd", "C:\\code\\knowledge-wiki",
+    "--ingest-cmd", "uv run ingest.py",
+    "--state-file", "C:\\code\\knowledge-wiki\\.scan-state.json"
+  ],
+  "interval_minutes": 1,
+  "timeout_minutes": 30,
+  "description": "pkwiki: neue Dateien in raw/ ingesten"
+}
+```
+
+`interval_minutes: 1` ist das Minimum des Windows Task Schedulers — für
+File-Ingest (PDF/PPTX dauert ohnehin länger) reicht das.
 
 ### Konvention: Single-Poll statt Loop
 

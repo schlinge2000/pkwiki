@@ -100,28 +100,60 @@ foreach ($name in $desired.Keys) {
         continue
     }
 
-    $argList = @("run", "`"$scriptPath`"")
-    if ($w.args) { $argList += $w.args }
-    $argString = $argList -join " "
+    $runner = if ($w.runner) { $w.runner } else { "uv" }
+    $triggerType = if ($w.trigger) { $w.trigger } else { "interval" }
 
     $desc = if ($w.description) { $w.description } else { "Knowledge Tree Watcher: $($w.name)" }
     $interval = if ($w.interval_minutes) { $w.interval_minutes } else { 15 }
     $timeout = if ($w.timeout_minutes) { $w.timeout_minutes } else { 30 }
 
     try {
-        $action = New-ScheduledTaskAction `
-            -Execute "uv" `
-            -Argument $argString `
-            -WorkingDirectory $cwd
+        # -- Action: runner bestimmt, wie das Skript aufgerufen wird ----------
 
-        $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
-            -RepetitionInterval (New-TimeSpan -Minutes $interval) `
-            -RepetitionDuration (New-TimeSpan -Days 9999)
+        switch ($runner) {
+            "powershell" {
+                $extraArgs = if ($w.args) { " " + ($w.args -join " ") } else { "" }
+                $action = New-ScheduledTaskAction `
+                    -Execute "powershell.exe" `
+                    -Argument "-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File `"$scriptPath`"$extraArgs" `
+                    -WorkingDirectory $cwd
+            }
+            default {
+                # "uv" (default): uv run <script> <args...>
+                $argList = @("run", "`"$scriptPath`"")
+                if ($w.args) { $argList += $w.args }
+                $action = New-ScheduledTaskAction `
+                    -Execute "uv" `
+                    -Argument ($argList -join " ") `
+                    -WorkingDirectory $cwd
+            }
+        }
 
-        $settings = New-ScheduledTaskSettingsSet `
-            -MultipleInstances IgnoreNew `
-            -ExecutionTimeLimit (New-TimeSpan -Minutes $timeout) `
-            -StartWhenAvailable
+        # -- Trigger + Settings: trigger-Type bestimmt das Takt-Modell --------
+
+        switch ($triggerType) {
+            "at_logon" {
+                # Langlaufender Daemon, startet beim User-Login.
+                $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+                # ExecutionTimeLimit 0 = unbegrenzt
+                $settings = New-ScheduledTaskSettingsSet `
+                    -MultipleInstances IgnoreNew `
+                    -ExecutionTimeLimit (New-TimeSpan -Hours 0) `
+                    -StartWhenAvailable
+                $modeLabel = "at_logon"
+            }
+            default {
+                # "interval": Single-Poll alle N Minuten
+                $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+                    -RepetitionInterval (New-TimeSpan -Minutes $interval) `
+                    -RepetitionDuration (New-TimeSpan -Days 9999)
+                $settings = New-ScheduledTaskSettingsSet `
+                    -MultipleInstances IgnoreNew `
+                    -ExecutionTimeLimit (New-TimeSpan -Minutes $timeout) `
+                    -StartWhenAvailable
+                $modeLabel = "alle $interval Min"
+            }
+        }
 
         Register-ScheduledTask `
             -TaskName $name `
@@ -132,9 +164,9 @@ foreach ($name in $desired.Keys) {
             -Force | Out-Null
 
         if ($existingNames -contains $name) {
-            Write-Host "  UPDATE  $name (alle $interval Min)" -ForegroundColor DarkCyan
+            Write-Host "  UPDATE  $name ($modeLabel)" -ForegroundColor DarkCyan
         } else {
-            Write-Host "  CREATE  $name (alle $interval Min)" -ForegroundColor Green
+            Write-Host "  CREATE  $name ($modeLabel)" -ForegroundColor Green
         }
     } catch {
         Write-Host "  ! $name konnte nicht registriert werden: $_" -ForegroundColor Red
