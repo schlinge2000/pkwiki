@@ -9,6 +9,7 @@ _personal-*/
 
 # Rohdokumente
 raw/
+wiki/
 
 # Python
 __pycache__/
@@ -16,6 +17,7 @@ __pycache__/
 *.pyo
 .venv/
 .uv/
+*.code-workspace
 
 # Konfiguration mit internen Repo-Namen
 code-repos.yaml
