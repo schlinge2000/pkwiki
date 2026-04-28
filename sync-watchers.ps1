@@ -27,7 +27,13 @@ $TaskPrefix = "KnowledgeTree-"
 function Resolve-WatchersFile {
     param([string]$Explicit)
 
-    if ($Explicit) { return $Explicit }
+    # Explizit uebergebener Pfad MUSS existieren — sonst koennte ein
+    # tippfehlerhafter/transient nicht erreichbarer Pfad spaeter dazu
+    # fuehren, dass die "Remove obsolete"-Schleife alle Custom-Tasks loescht.
+    if ($Explicit) {
+        if (Test-Path $Explicit) { return $Explicit }
+        return $null
+    }
 
     # Versuche $env:VAULT_ROOT (aus .env gesetzt)
     if ($env:VAULT_ROOT -and (Test-Path (Join-Path $env:VAULT_ROOT "watchers.json"))) {
@@ -45,16 +51,19 @@ function Resolve-WatchersFile {
         }
     }
 
-    # Fallback: watchers.json neben dem Skript
-    $local = Join-Path $PSScriptRoot "watchers.json"
-    if (Test-Path $local) { return $local }
-
+    # KEIN Fallback auf das Repo-Template: das wuerde nur die Default-Eintraege
+    # laden und im Anschluss alle haendig ergaenzten Watcher-Tasks als
+    # "obsolet" loeschen. Lieber abbrechen.
     return $null
 }
 
 $path = Resolve-WatchersFile -Explicit $WatchersFile
 if (-not $path) {
-    Write-Host "sync-watchers: keine watchers.json gefunden (VAULT_ROOT gesetzt?)" -ForegroundColor Red
+    if ($WatchersFile) {
+        Write-Host "sync-watchers: -WatchersFile '$WatchersFile' nicht gefunden. Abbruch ohne Aenderungen." -ForegroundColor Red
+    } else {
+        Write-Host "sync-watchers: keine Vault-watchers.json gefunden (VAULT_ROOT gesetzt? .env vorhanden?). Abbruch ohne Aenderungen." -ForegroundColor Red
+    }
     exit 1
 }
 
