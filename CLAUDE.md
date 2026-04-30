@@ -17,7 +17,7 @@ raw/                   # Unveränderliche Quellen — NUR LESEN, niemals modifiz
   slides/              # Präsentationen (PPTX)
   docs/                # Word-Dokumente, Textdateien (.docx, .txt)
   links/               # Web-Artikel als .md
-  transcripts/         # Transkripte: Meetings, Vorträge, Interviews, Podcasts (.md/.txt)
+  transcripts/         # Teams-Transkripte (.docx) — eigene Pipeline: transcript-ingest.py
   inbox/               # Unsortierter Eingang
   manuals/             # PDF-Handbücher (eigene Pipeline: manual-ingest.py)
   .cache/              # Intern: extrahierte Texte + Bilder (nicht anfassen)
@@ -72,23 +72,26 @@ wiki/                  # Alles hier wird von Dir gepflegt
 ```powershell
 powershell -ExecutionPolicy Bypass -File ".\watch.ps1"
 ```
-- Überwacht `raw/pdfs/`, `raw/slides/`, `raw/docs/`, `raw/links/`, `raw/transcripts/` auf neue Dateien
+- Überwacht `raw/pdfs/`, `raw/slides/`, `raw/docs/`, `raw/links/` auf neue Dateien
 - Ruft automatisch `ingest.py <datei>` auf
 - **Startup-Scan:** beim Start werden alle Dateien ohne Cache-Eintrag nachverarbeitet
-- `raw/manuals/` wird bewusst ignoriert — eigene Pipeline
+- `raw/manuals/` und `raw/transcripts/` werden bewusst ignoriert — eigene Pipelines
 
-### transcript-prep.py — Teams-Transkripte (.docx → .md)
+### transcript-ingest.py — Teams-Transkripte (eigene Pipeline)
 ```bash
-uv run transcript-prep.py <teams.docx> --event "Kunde Acme – PoC" [--date 2026-04-30] [--format meeting]
+uv run transcript-ingest.py raw/transcripts/<datei.docx> \
+    --event "Kunde Acme – PoC Setup" [--date 2026-04-30] [--format meeting] \
+    [--language de] [--context "Erstgespräch zu Forecast-Pilot"] [--force]
+uv run transcript-ingest.py raw/transcripts/foo.docx --no-ingest   # Nur Cache, kein LLM
 ```
-- Wandelt Teams-`.docx`-Transkripte (Recap-Download → "Transkript herunterladen") in `raw/transcripts/<datum>_<slug>.md` mit YAML-Frontmatter um
-- Sprecher-Kürzel werden automatisch als Initialen erzeugt ("Peter Kunz" → `PK`); Kollisionen → `PK2`, `PK3`
-- Aufeinanderfolgende Beiträge desselben Sprechers werden zusammengefasst
-- `--event`/`--context` ohne Argument bleiben als `TODO:`-Platzhalter — vor Ingest nachpflegen
-- Die fertige `.md` triggert automatisch den Watcher → `ingest.py` läuft im Transkript-Modus
+- Parst die `.docx` mit Sprecher-Awareness (Teams-Header `Vorname Nachname H:MM[:SS]`)
+- Generiert eine strukturierte `.md` mit Frontmatter (auto-Initialen `Peter Kunz` → `PK`, Kollisionen → `PK2`/`PK3`) in `raw/.cache/transcripts/<stem>.md`
+- Ruft anschließend den regulären `ingest.py`-Flow auf — der erkennt den Pfad `raw/transcripts/` und schaltet auf den transkript-spezifischen Prompt (siehe Frontmatter unten)
+- `--event`/`--context` als TODO-Platzhalter erlaubt; das LLM markiert sie dann als unklar
+- Wird `raw/transcripts/` von `watch.ps1` bewusst ignoriert — Trigger erfolgt manuell oder über externen Daemon (z.B. `code-watch.py` in knowledge-tree, analog zur manuals-Pipeline)
 
 **Wo finde ich das Teams-Transkript?**
-Nicht lokal — in der Cloud. Teams öffnen → Kalender → Meeting anklicken → **Recap** → **Transkript** → **Herunterladen** → `.docx`. Landet im `Downloads/`-Ordner.
+Nicht lokal — in der Cloud. Teams öffnen → Kalender → Meeting → **Recap** → **Transkript** → **Herunterladen** als `.docx`. Datei dann nach `raw/transcripts/` legen und `transcript-ingest.py` aufrufen.
 
 ### manual-ingest.py — PDF-Handbücher
 ```bash
@@ -173,23 +176,23 @@ last_updated: YYYY-MM-DD
 - Ticket-Seiten: Beschreibung, betroffene Module als `[[modul-slug]]`, Status
 - `[[wikilinks]]` zwischen Modulen und Tickets
 
-### Transkript (Rohdatei in `raw/transcripts/`)
-Transkripte (Meetings, Vorträge, Interviews, Podcasts, Calls) brauchen Kontext, sonst landet Smalltalk als Konzeptseite. Lege jedes Transkript als `.md` mit YAML-Frontmatter ab:
+### Transkript (Rohdatei in `raw/transcripts/` als `.docx`)
+Transkripte (Meetings, Vorträge, Interviews, Podcasts, Calls) brauchen Kontext, sonst landet Smalltalk als Konzeptseite. Eingang ist das **Teams-`.docx`** wie aus dem Recap heruntergeladen — `transcript-ingest.py` erzeugt die strukturierte `.md` mit Frontmatter:
 ```yaml
 ---
 event: "Kundengespräch Acme – Forecasting Setup"
 format: meeting | talk | interview | podcast | call | workshop
 date: YYYY-MM-DD
-speakers:
-  PK: "Peter Kunz, INFORM (Geschäftsführung)"
-  MS: "Maria Schmidt, Acme Logistik (Head of Supply Chain)"
-context: "Erstgespräch zu Forecast-Pilot, Ziel: Scope für PoC klären"
 language: de | en
+speakers:
+  PK: "Peter Kunz"
+  MS: "Maria Schmidt"
+context: "Erstgespräch zu Forecast-Pilot, Ziel: Scope für PoC klären"
 ---
-PK: …
-MS: …
+**PK:** Guten Tag …
+**MS:** Hallo …
 ```
-Reine Whisper-`.txt` ohne Frontmatter funktionieren auch, liefern aber schlechtere Ergebnisse. `ingest.py` erkennt Dateien unter `raw/transcripts/` automatisch und nutzt einen transkript-spezifischen Prompt (Fokus: Entscheidungen, Action Items, Kernaussagen pro Sprecher — kein Auto-Konzept aus jedem Detail).
+`event` und `context` werden aus den CLI-Flags übernommen (oder bleiben als TODO-Platzhalter). Sprecher-Initialen werden automatisch generiert (`Peter Kunz` → `PK`, Kollisionen → `PK2`). Das LLM erhält im Anschluss einen transkript-spezifischen Prompt (Fokus: Quellenübersicht mit Kontext / Kernaussagen je Sprecher / Entscheidungen / Action Items / Zitate; max. 0–3 Konzeptseiten; kein Smalltalk).
 
 ### Handbuch-Seite (`wiki/manuals/<produkt>/`)
 ```yaml
