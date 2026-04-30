@@ -77,6 +77,19 @@ powershell -ExecutionPolicy Bypass -File ".\watch.ps1"
 - **Startup-Scan:** beim Start werden alle Dateien ohne Cache-Eintrag nachverarbeitet
 - `raw/manuals/` wird bewusst ignoriert — eigene Pipeline
 
+### transcript-prep.py — Teams-Transkripte (.docx → .md)
+```bash
+uv run transcript-prep.py <teams.docx> --event "Kunde Acme – PoC" [--date 2026-04-30] [--format meeting]
+```
+- Wandelt Teams-`.docx`-Transkripte (Recap-Download → "Transkript herunterladen") in `raw/transcripts/<datum>_<slug>.md` mit YAML-Frontmatter um
+- Sprecher-Kürzel werden automatisch als Initialen erzeugt ("Peter Kunz" → `PK`); Kollisionen → `PK2`, `PK3`
+- Aufeinanderfolgende Beiträge desselben Sprechers werden zusammengefasst
+- `--event`/`--context` ohne Argument bleiben als `TODO:`-Platzhalter — vor Ingest nachpflegen
+- Die fertige `.md` triggert automatisch den Watcher → `ingest.py` läuft im Transkript-Modus
+
+**Wo finde ich das Teams-Transkript?**
+Nicht lokal — in der Cloud. Teams öffnen → Kalender → Meeting anklicken → **Recap** → **Transkript** → **Herunterladen** → `.docx`. Landet im `Downloads/`-Ordner.
+
 ### manual-ingest.py — PDF-Handbücher
 ```bash
 uv run manual-ingest.py raw/manuals/Handbuch.pdf --product produkt-slug --max-level 2
