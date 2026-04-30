@@ -45,7 +45,7 @@ function Invoke-StartupScan {
     $cacheDir  = Join-Path $rawPath ".cache"
     Write-Log "Startup-Scan: prüfe ungeverarbeitete Dateien in raw/ ..."
 
-    $supportedExt = @('.txt', '.pptx', '.docx', '.pdf')
+    $supportedExt = @('.txt', '.pptx', '.docx', '.pdf', '.md')
 
     $files = Get-ChildItem $rawPath -Recurse -File | Where-Object {
         # .cache-Ordner und manuals-Ordner (eigene Pipeline) ausschliessen

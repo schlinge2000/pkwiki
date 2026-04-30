@@ -17,6 +17,7 @@ raw/                   # Unveränderliche Quellen — NUR LESEN, niemals modifiz
   slides/              # Präsentationen (PPTX)
   docs/                # Word-Dokumente, Textdateien (.docx, .txt)
   links/               # Web-Artikel als .md
+  transcripts/         # Transkripte: Meetings, Vorträge, Interviews, Podcasts (.md/.txt)
   inbox/               # Unsortierter Eingang
   manuals/             # PDF-Handbücher (eigene Pipeline: manual-ingest.py)
   .cache/              # Intern: extrahierte Texte + Bilder (nicht anfassen)
@@ -71,7 +72,7 @@ wiki/                  # Alles hier wird von Dir gepflegt
 ```powershell
 powershell -ExecutionPolicy Bypass -File ".\watch.ps1"
 ```
-- Überwacht `raw/pdfs/`, `raw/slides/`, `raw/docs/`, `raw/links/` auf neue Dateien
+- Überwacht `raw/pdfs/`, `raw/slides/`, `raw/docs/`, `raw/links/`, `raw/transcripts/` auf neue Dateien
 - Ruft automatisch `ingest.py <datei>` auf
 - **Startup-Scan:** beim Start werden alle Dateien ohne Cache-Eintrag nachverarbeitet
 - `raw/manuals/` wird bewusst ignoriert — eigene Pipeline
@@ -127,7 +128,7 @@ last_updated: YYYY-MM-DD
 title: Titel des Dokuments
 type: source
 source_file: raw/pdfs/dateiname.pdf
-source_type: paper | slide | doc | article | talk
+source_type: paper | slide | doc | article | talk | transcript
 date: YYYY-MM-DD
 key_concepts: ["[[konzept-1]]", "[[konzept-2]]"]
 last_updated: YYYY-MM-DD
@@ -158,6 +159,24 @@ last_updated: YYYY-MM-DD
 - Modul-Seiten: Architektur, Verantwortlichkeiten, Abhängigkeiten, offene Punkte
 - Ticket-Seiten: Beschreibung, betroffene Module als `[[modul-slug]]`, Status
 - `[[wikilinks]]` zwischen Modulen und Tickets
+
+### Transkript (Rohdatei in `raw/transcripts/`)
+Transkripte (Meetings, Vorträge, Interviews, Podcasts, Calls) brauchen Kontext, sonst landet Smalltalk als Konzeptseite. Lege jedes Transkript als `.md` mit YAML-Frontmatter ab:
+```yaml
+---
+event: "Kundengespräch Acme – Forecasting Setup"
+format: meeting | talk | interview | podcast | call | workshop
+date: YYYY-MM-DD
+speakers:
+  PK: "Peter Kunz, INFORM (Geschäftsführung)"
+  MS: "Maria Schmidt, Acme Logistik (Head of Supply Chain)"
+context: "Erstgespräch zu Forecast-Pilot, Ziel: Scope für PoC klären"
+language: de | en
+---
+PK: …
+MS: …
+```
+Reine Whisper-`.txt` ohne Frontmatter funktionieren auch, liefern aber schlechtere Ergebnisse. `ingest.py` erkennt Dateien unter `raw/transcripts/` automatisch und nutzt einen transkript-spezifischen Prompt (Fokus: Entscheidungen, Action Items, Kernaussagen pro Sprecher — kein Auto-Konzept aus jedem Detail).
 
 ### Handbuch-Seite (`wiki/manuals/<produkt>/`)
 ```yaml

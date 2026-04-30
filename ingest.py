@@ -134,6 +134,36 @@ Für Präsentationen (PPTX) — Folienübergänge als narrative Einheit verstehe
 """
 
 
+TRANSCRIPT_ADDENDUM = """
+
+---
+# WICHTIG — diese Quelle ist ein TRANSKRIPT (Meeting / Vortrag / Interview / Podcast / Call)
+
+Transkripte sind gesprochene Sprache: redundant, nicht jeder Satz ist ein Konzept. Wende daher folgende Regeln an:
+
+1. **Frontmatter zuerst lesen.** Falls am Anfang ein YAML-Block mit `event`, `format`, `date`, `speakers`, `context`, `language` steht — nutze diese Metadaten als Wahrheit. Speakers-Kürzel ("PK:", "MS:") in Aussagen auflösen.
+
+2. **Quellenübersicht** (`wiki/sources/`) ist die zentrale Seite. Sie enthält:
+   - Frontmatter mit `source_type: transcript`, `format`, `date`, `speakers` (als Liste), `event`
+   - Abschnitt **Kontext** — 2–3 Sätze: worum ging's, was war das Ziel
+   - Abschnitt **Kernaussagen je Sprecher** — pro Person die wichtigsten Punkte
+   - Abschnitt **Entscheidungen** — was wurde explizit beschlossen
+   - Abschnitt **Action Items** — wer macht was bis wann (falls genannt)
+   - Abschnitt **Offene Fragen** — was blieb ungeklärt
+   - Abschnitt **Zitate** — 2–5 prägnante O-Töne mit Sprecher-Attribution
+
+3. **Konzeptseiten sparsam.** Lege NUR dann eine neue Konzeptseite an, wenn das Transkript eine substantielle Aussage zu einem Thema enthält, das eigenständig nachschlagbar sein soll (z.B. eine Methodik, ein strategischer Standpunkt, ein neues Produktkonzept). **Nicht** jedes besprochene Detail wird ein Konzept. Maximal 0–3 Konzeptseiten pro Transkript. Wenn nichts wirklich Neues drinsteht: 0.
+
+4. **Bestehende Konzeptseiten aktualisieren** ist meist wertvoller als neue anlegen — z.B. Abschnitt „Aussagen aus Gesprächen" mit Zitat + Quellenlink ergänzen.
+
+5. **Entity-Seiten** für genannte Personen/Firmen anlegen oder erweitern (Rolle, Kontext, Aussagen).
+
+6. **Confidence:** Aussagen aus Transkripten sind Einzelmeinungen — `confidence: medium` als Default, `low` wenn spekulativ formuliert ("ich glaube", "vielleicht").
+
+7. **Kein Smalltalk übernehmen.** Begrüßungen, Wettergespräche, technische Probleme („hörst du mich?") gehören nicht ins Wiki.
+"""
+
+
 def extract_if_needed(source_path: Path, log: logging.Logger) -> Path:
     """Extrahiert PPTX/DOCX/PDF zu .md falls nötig. Gibt .md-Pfad zurück."""
     suffix = source_path.suffix.lower()
@@ -195,9 +225,22 @@ def read_wiki_context() -> tuple[str, str, str]:
     return claude_md, index_md, log_md
 
 
+def is_transcript(source_path: Path) -> bool:
+    """True wenn die Quelldatei (oder ihr Cache) unterhalb raw/transcripts/ liegt."""
+    try:
+        rel = source_path.resolve().relative_to(RAW_DIR.resolve())
+    except ValueError:
+        try:
+            rel = source_path.resolve().relative_to(CACHE_DIR.resolve())
+        except ValueError:
+            return False
+    return rel.parts and rel.parts[0] == "transcripts"
+
+
 def call_llm(source_name: str, source_content: str,
              claude_md: str, index_md: str, log_md: str,
-             log: logging.Logger) -> IngestResponse:
+             log: logging.Logger,
+             transcript: bool = False) -> IngestResponse:
     """Ruft Azure OpenAI auf und gibt validiertes IngestResponse-Objekt zurück."""
     client = AzureOpenAI(
         api_key=os.environ["AZURE_OPENAI_API_KEY"],
@@ -230,14 +273,16 @@ def call_llm(source_name: str, source_content: str,
 ---
 Erstelle nun die Wiki-Seiten für diese Quelle."""
 
-    log.info("Azure OpenAI Anfrage — Deployment: %s | Quelle: %s | Textlänge: %d Zeichen",
-             deployment, source_name, len(source_content))
+    system_prompt = SYSTEM_PROMPT + (TRANSCRIPT_ADDENDUM if transcript else "")
+
+    log.info("Azure OpenAI Anfrage — Deployment: %s | Quelle: %s | Textlänge: %d Zeichen | Transkript-Modus: %s",
+             deployment, source_name, len(source_content), transcript)
 
     # Structured Output via Pydantic — kein manuelles JSON-Parsing mehr
     response = client.beta.chat.completions.parse(
         model=deployment,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ],
         max_completion_tokens=16000,
@@ -339,6 +384,9 @@ def ingest(source_file: str):
         claude_md, index_md, log_md = read_wiki_context()
 
         # 3. LLM aufrufen — gibt validiertes IngestResponse zurück
+        transcript_mode = is_transcript(source_path)
+        if transcript_mode:
+            log.info("Transkript erkannt — verwende transkript-spezifischen Prompt")
         result = call_llm(
             source_name=source_path.name,
             source_content=source_content,
@@ -346,6 +394,7 @@ def ingest(source_file: str):
             index_md=index_md,
             log_md=log_md,
             log=log,
+            transcript=transcript_mode,
         )
 
         # 4. Seiten schreiben
