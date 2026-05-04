@@ -9,6 +9,14 @@
       "description": "Synchronisiert Wiki-MD-Dateien aus OneDrive nach knowledge-wiki-archive auf GitHub."
     },
     {
+      "name": "WikiPull",
+      "script": "wiki-sync.py",
+      "args": ["--pull"],
+      "interval_minutes": 15,
+      "timeout_minutes": 10,
+      "description": "Holt im Archive (z.B. via PR) hinzugefügte Wiki-Dateien zurück in den Vault (additiv, keine Überschreibung)."
+    },
+    {
       "name": "CodeWatch",
       "script": "code-watch.py",
       "args": [],

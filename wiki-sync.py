@@ -4,11 +4,16 @@
 """
 wiki-sync.py — Synchronisiert alle Wiki-MD-Dateien mit dem GitHub-Archiv-Repo.
 
-Liest alle wiki/-Ordner aus VAULT_ROOT (alle Nodes) und pusht geänderte
-Dateien in das Archiv-Repo (schlinge2000/knowledge-wiki-archive).
+Default (Push): Liest alle wiki/-Ordner aus VAULT_ROOT (alle Nodes) und pusht
+geänderte Dateien in das Archiv-Repo (schlinge2000/knowledge-wiki-archive).
+
+Pull-Modus (--pull): Kopiert Dateien, die im Archive existieren aber im Vault
+fehlen, additiv in den Vault. Lokal abweichende Dateien werden NICHT
+überschrieben (Konflikt-Report). Brauchbar nach PR-Merges im Archive.
 
 Usage:
-    uv run wiki-sync.py
+    uv run wiki-sync.py                  # Vault → Archive (push)
+    uv run wiki-sync.py --pull           # Archive → Vault (pull, additiv)
     uv run wiki-sync.py --dry-run
     uv run wiki-sync.py --verbose
 
@@ -166,6 +171,52 @@ def sync(dry_run: bool = False, verbose: bool = False) -> None:
         print(f"Erfolgreich gepusht → github.com/{WIKI_ARCHIVE_REPO}")
 
 # ---------------------------------------------------------------------------
+# Pull (Archive → Vault, additiv)
+# ---------------------------------------------------------------------------
+
+def pull(dry_run: bool = False, verbose: bool = False) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        print(f"Klone {WIKI_ARCHIVE_REPO}...")
+        clone_archive(tmpdir)
+
+        tmppath = Path(tmpdir)
+        archive_files: list[tuple[str, Path]] = []
+        for f in tmppath.rglob("*.md"):
+            if ".git" in f.parts:
+                continue
+            rel = str(f.relative_to(tmppath)).replace("\\", "/")
+            archive_files.append((rel, f))
+
+        print(f"Wiki-Dateien im Archive: {len(archive_files)}  (Vault: {VAULT_ROOT})")
+
+        added: list[str] = []
+        conflicts: list[str] = []
+        for archive_path, src in sorted(archive_files):
+            dest = VAULT_ROOT / archive_path
+            content = src.read_bytes()
+
+            if dest.exists():
+                if dest.read_bytes() == content:
+                    if verbose:
+                        print(f"  = {archive_path}")
+                else:
+                    print(f"  ! KONFLIKT (lokal abweichend, übersprungen): {archive_path}")
+                    conflicts.append(archive_path)
+                continue
+
+            prefix = "[DRY] " if dry_run else ""
+            print(f"  {prefix}+ {archive_path}")
+            if not dry_run:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(content)
+            added.append(archive_path)
+
+        unchanged = len(archive_files) - len(added) - len(conflicts)
+        print(f"\nHinzugefügt: {len(added)}, Konflikte: {len(conflicts)}, Unverändert: {unchanged}")
+        if conflicts:
+            print("Konflikte müssen manuell aufgelöst werden (Vault-Datei prüfen, ggf. mergen).")
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -173,17 +224,22 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Wiki-Sync: OneDrive-Vault → GitHub Archive Repo",
+        description="Wiki-Sync: OneDrive-Vault ↔ GitHub Archive Repo",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Beispiele:
-  uv run wiki-sync.py                  Sync alle geänderten Dateien
-  uv run wiki-sync.py --dry-run        Nur anzeigen, nichts pushen
+  uv run wiki-sync.py                  Push: Vault → Archive
+  uv run wiki-sync.py --pull           Pull: Archive → Vault (additiv)
+  uv run wiki-sync.py --dry-run        Nur anzeigen
   uv run wiki-sync.py --verbose        Auch unveränderte Dateien anzeigen
         """,
     )
-    parser.add_argument("--dry-run", action="store_true", help="Nur anzeigen, nicht pushen")
+    parser.add_argument("--pull", action="store_true", help="Archive → Vault: fehlende Dateien aus Archive in den Vault kopieren")
+    parser.add_argument("--dry-run", action="store_true", help="Nur anzeigen, keine Schreibvorgänge")
     parser.add_argument("--verbose", "-v", action="store_true", help="Unveränderte Dateien auch anzeigen")
 
     args = parser.parse_args()
-    sync(dry_run=args.dry_run, verbose=args.verbose)
+    if args.pull:
+        pull(dry_run=args.dry_run, verbose=args.verbose)
+    else:
+        sync(dry_run=args.dry_run, verbose=args.verbose)
