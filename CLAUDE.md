@@ -106,9 +106,11 @@ Vault verwaltet. Neue Watcher hinzufügen = JSON-Eintrag anhängen, ohne
 | Pfad | Rolle |
 |------|-------|
 | `knowledge-tree/watchers.json` | Template, wird beim ersten Setup in den Vault kopiert |
-| `$VAULT_ROOT/watchers.json` | **Aktive Config** — hier editieren |
+| `$VAULT_ROOT/watchers.json` | **Aktive Watcher-Config** — hier editieren |
+| `knowledge-tree/code-repos.yaml.example` | Template für `code-watch.py` |
+| `$VAULT_ROOT/code-repos.yaml` | **Aktive Repo-Liste** für `code-watch.py` — hier editieren (über OneDrive multi-machine-synchron) |
 | `knowledge-tree/sync-watchers.ps1` | Syncht Config → Scheduled Tasks |
-| `knowledge-tree/setup.ps1` | Kopiert Template, registriert MetaSync-Task |
+| `knowledge-tree/setup.ps1` | Kopiert Templates, migriert ggf. alte `code-repos.yaml`, registriert MetaSync-Task |
 
 ### Config-Schema
 

@@ -203,6 +203,36 @@ if (Test-Path $vaultWatchersFile) {
     }
 }
 
+# (a2) Default-code-repos.yaml aus Repo-Template in $VAULT_ROOT kopieren.
+#      Liegt im Vault (nicht im Code-Dir), damit Repo-Liste ueber OneDrive
+#      zwischen Maschinen synchronisiert wird.
+
+$vaultReposFile = Join-Path $VaultRoot "code-repos.yaml"
+$reposTemplate = Join-Path $ScriptRoot "code-repos.yaml.example"
+$legacyReposFile = Join-Path $ScriptRoot "code-repos.yaml"
+
+if (Test-Path $vaultReposFile) {
+    Write-Host "  code-repos.yaml im Vault vorhanden - wird nicht ueberschrieben: $vaultReposFile" -ForegroundColor DarkGray
+} elseif (Test-Path $legacyReposFile) {
+    # Migration: alte Datei aus dem Code-Dir uebernehmen
+    try {
+        Move-Item -Path $legacyReposFile -Destination $vaultReposFile
+        Write-Host "  code-repos.yaml aus Code-Dir nach Vault migriert: $vaultReposFile" -ForegroundColor Green
+    } catch {
+        Write-Host "  ! Migration von code-repos.yaml fehlgeschlagen: $_" -ForegroundColor Red
+    }
+} elseif (-not (Test-Path $reposTemplate)) {
+    Write-Host "  ! Template $reposTemplate fehlt - ueberspringe." -ForegroundColor Red
+} else {
+    try {
+        Copy-Item $reposTemplate $vaultReposFile
+        Write-Host "  code-repos.yaml aus Template angelegt: $vaultReposFile" -ForegroundColor Green
+        Write-Host "  -> Repos eintragen + GITHUB_PAT in .env setzen, dann KnowledgeTree-CodeWatch laeuft." -ForegroundColor DarkGray
+    } catch {
+        Write-Host "  ! code-repos.yaml konnte nicht angelegt werden: $_" -ForegroundColor Red
+    }
+}
+
 # (b) MetaSync-Task registrieren — liest alle 15 Min watchers.json neu
 #     und syncht die Scheduled Tasks (create/update/remove).
 
@@ -265,5 +295,5 @@ Write-Host "     uv run `"$ScriptRoot\ingest.py`" `"$VaultRoot\raw\slides\Meine-
 Write-Host "  2. Watcher laufen automatisch (Aufgabenplanung > 'KnowledgeTree-*')" -ForegroundColor White
 Write-Host "     Neue Watcher hinzufuegen: $vaultWatchersFile editieren" -ForegroundColor DarkGray
 Write-Host "     -> MetaSync registriert/entfernt Tasks innerhalb 15 Min automatisch" -ForegroundColor DarkGray
-Write-Host "  3. Fuer Code-Monitoring: GITHUB_PAT und code-repos.yaml setzen" -ForegroundColor White
+Write-Host "  3. Fuer Code-Monitoring: GITHUB_PAT in .env + Repos in $vaultReposFile eintragen" -ForegroundColor White
 Write-Host ""

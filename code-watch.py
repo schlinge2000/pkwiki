@@ -13,7 +13,7 @@ Usage:
   uv run code-watch.py --repo demand-ai         # nur ein Repo
   uv run code-watch.py --since 2026-04-19T00:00:00Z  # ab Zeitstempel
 
-Konfiguration: code-repos.yaml (nicht in git, enthält interne Repo-Namen)
+Konfiguration: $VAULT_ROOT/code-repos.yaml (enthält interne Repo-Namen, nicht in git)
 """
 
 from __future__ import annotations
@@ -74,7 +74,8 @@ log = logging.getLogger(__name__)
 SCRIPT_ROOT = Path(__file__).parent
 VAULT_ROOT = Path(os.environ.get("VAULT_ROOT", str(SCRIPT_ROOT)))
 STATE_FILE = VAULT_ROOT / ".code-watch-state.json"
-CONFIG_FILE = SCRIPT_ROOT / "code-repos.yaml"   # im Code-Verzeichnis, nicht im Vault
+CONFIG_FILE = VAULT_ROOT / "code-repos.yaml"          # Hauptort (multi-machine via OneDrive)
+LEGACY_CONFIG_FILE = SCRIPT_ROOT / "code-repos.yaml"  # Übergang: alter Pfad im Code-Verzeichnis
 GITHUB_API = "https://api.github.com"
 EXTRACT_SCRIPT = SCRIPT_ROOT / "code-extract.py"
 INGEST_SCRIPT = SCRIPT_ROOT / "code-ingest.py"
@@ -86,15 +87,25 @@ MANUAL_SCRIPT = SCRIPT_ROOT / "manual-ingest.py"
 
 
 def load_config() -> WatchConfig:
-    """Lädt code-repos.yaml. Fällt auf Umgebungsvariablen zurück wenn kein YAML."""
+    """Lädt code-repos.yaml aus dem Vault. Fällt auf Legacy-Pfad oder Umgebungsvariablen zurück."""
     token = os.environ.get("GITHUB_PAT", "")
     if not token:
         raise EnvironmentError("GITHUB_PAT muss in .env oder als Umgebungsvariable gesetzt sein")
 
+    config_path: Path | None = None
     if CONFIG_FILE.exists():
+        config_path = CONFIG_FILE
+    elif LEGACY_CONFIG_FILE.exists():
+        log.warning(
+            "code-repos.yaml im Code-Verzeichnis gefunden (%s) — bitte nach %s verschieben.",
+            LEGACY_CONFIG_FILE, CONFIG_FILE,
+        )
+        config_path = LEGACY_CONFIG_FILE
+
+    if config_path is not None:
         if not HAS_YAML:
             raise ImportError("PyYAML nicht installiert: uv add pyyaml")
-        with CONFIG_FILE.open(encoding="utf-8") as f:
+        with config_path.open(encoding="utf-8") as f:
             raw = yaml.safe_load(f)
         raw["github_token"] = token  # aus .env überschreiben
         return WatchConfig.model_validate(raw)
@@ -104,9 +115,8 @@ def load_config() -> WatchConfig:
     watch_repo = os.environ.get("WATCH_REPO", "")
     if not watch_repo or "/" not in watch_repo:
         raise EnvironmentError(
-            "code-repos.yaml nicht gefunden und WATCH_REPO nicht gesetzt.\n"
-            "Erstelle code-repos.yaml (siehe vault-tree.yaml.example) oder\n"
-            "setze WATCH_REPO=owner/repo in .env"
+            f"code-repos.yaml nicht gefunden (gesucht: {CONFIG_FILE}) und WATCH_REPO nicht gesetzt.\n"
+            "Erstelle die Datei (siehe code-repos.yaml.example) oder setze WATCH_REPO=owner/repo in .env"
         )
     owner, repo = watch_repo.split("/", 1)
     return WatchConfig(

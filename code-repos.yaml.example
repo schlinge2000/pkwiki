@@ -1,6 +1,8 @@
 ﻿# code-repos.yaml.example
-# Kopiere nach code-repos.yaml und trage deine Repos ein.
-# code-repos.yaml ist in .gitignore (enthaelt interne Repo-Namen).
+# Kopiere nach $VAULT_ROOT/code-repos.yaml und trage deine Repos ein
+# (setup.ps1 erledigt das automatisch beim ersten Setup).
+# Die Datei liegt im Vault (nicht im Code-Repo), damit die Repo-Liste
+# ueber OneDrive zwischen Maschinen synchronisiert wird.
 #
 # GITHUB_PAT kommt aus .env -- hier NICHT eintragen.
 # Scope benoetigt: repo (fuer private Org-Repos)
