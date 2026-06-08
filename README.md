@@ -200,17 +200,85 @@ python ingest.py raw/pdfs/mein-paper.pdf
 
 ## Skript-Referenz
 
+### Ingest-Pipeline
+
 | Skript | Beschreibung |
 |--------|-------------|
-| `watch.ps1` | Watcher: pollt `raw/` alle 5s, loest automatisch Ingest aus (1 paralleler Job) |
-| `install-watcher.ps1` | Installiert Watcher als Windows Scheduled Task (startet bei Login) |
-| `extract.py` | Extraktion: Text + Vision-API-Bildbeschreibung + PyMuPDF-Fallback |
+| `watch.ps1` | FileSystemWatcher: pollt `raw/` alle 5s, löst automatisch Ingest aus |
+| `extract.py` | Text + Vision-API-Bildbeschreibung + PyMuPDF-Fallback |
 | `ingest.py` | Haupt-Pipeline: Dokument → strukturiertes JSON → Wiki-Seiten |
-| `extract-all.ps1` | Batch-Extraktion aller Dateien in `raw/` |
+| `extract-images.py` | Batch-Vision für alle Bilder aus PPTX/PDF/DOCX |
+| `synthesize.py` / `generate.py` | LLM-Synthese & PPTX-Generierung aus Wiki-Seiten |
+| `manual-ingest.py` | PDF-Handbücher → Kapitelseiten mit Bild-Index |
+
+### Code-Wiki (GitHub-Monitoring)
+
+| Skript | Beschreibung |
+|--------|-------------|
+| `code-watch.py` | Pollt GitHub-Repos auf neue Commits + scannt `raw/manuals/` |
+| `code-extract.py` | Commit-Diff → CommitDigest-JSON |
+| `code-ingest.py` | CommitDigest → `wiki/code-wiki/<projekt>/` |
+| `pm-synthesize.py` | Team-/PM-View-Aggregation |
+| `wiki-sync.py` | Wiki-MD → `knowledge-wiki-archive` (GitHub-Backup) |
+
+### Watcher-Infrastruktur
+
+| Skript | Beschreibung |
+|--------|-------------|
+| `setup.ps1` | Ersteinrichtung: Templates kopieren, MetaSync-Task registrieren |
+| `sync-watchers.ps1` | Syncht `watchers.json` → Windows Scheduled Tasks |
+| `scan-raw.py` | Generischer Polling-Watcher für Projekte ohne eigenen Daemon |
+| `test-connection.py` | Smoke-Test Azure-OpenAI- + GitHub-Verbindung |
+| `watcher-status.ps1` | Status aller registrierten Watcher anzeigen |
+| `install-watcher.ps1` / `register-task.ps1` | Legacy: einzelnen Watcher als Scheduled Task registrieren |
+
+### Wartung & Recovery
+
+| Skript | Beschreibung |
+|--------|-------------|
+| `batch-ingest.ps1` | Massen-Ingest aller bisher unverarbeiteten Dateien |
 | `check-unseen.ps1` | Zeigt noch nicht ingested Dateien in `raw/` |
 | `retry-failed.ps1` | Wiederholt fehlgeschlagene Ingests |
-| `reextract-failed.ps1` | Re-extrahiert Slides mit Vision-Fehlern im Cache |
-| `reextract-slides.ps1` | Komplett-Re-Extraktion aller Slide-Decks |
+| `reextract-failed.ps1` / `reextract-missing.ps1` / `reextract-slides.ps1` | Re-Extraktion einzelner Kategorien |
+| `rebuild-index.py` | Regeneriert `wiki/index.md` aus YAML-Frontmatter |
+| `rebuild-code-wiki-index.py` | Patcht Obsidian-Wikilinks in `wiki/code-wiki/` |
+
+---
+
+## Watcher-System (Scheduled Tasks)
+
+Windows Scheduled Tasks werden aus einer deklarativen Config im Vault verwaltet.
+Neue Watcher hinzufügen = JSON-Eintrag in `$VAULT_ROOT/watchers.json` anhängen — kein
+erneutes `setup.ps1` nötig. Ein Bootstrap-Task `KnowledgeTree-MetaSync` syncht alle 15 Min
+die Config nach Windows (CREATE/UPDATE/DELETE der entsprechenden `KnowledgeTree-*`-Tasks).
+
+```json
+{
+  "watchers": [
+    {
+      "name": "PkwikiWatch",
+      "cwd": "C:\\code\\knowledge-wiki",
+      "script": "watch.ps1",
+      "runner": "powershell",
+      "trigger": "at_logon",
+      "description": "FileSystemWatcher (Echtzeit raw/-Ingest)"
+    },
+    {
+      "name": "CodeWatch",
+      "cwd": "C:\\code\\knowledge-wiki",
+      "script": "code-watch.py",
+      "runner": "uv",
+      "trigger": "interval",
+      "interval_minutes": 15,
+      "timeout_minutes": 10,
+      "description": "GitHub-Commits + Manuals-Pipeline"
+    }
+  ]
+}
+```
+
+Details, Config-Schema und beide Watcher-Muster (`at_logon`-Daemon vs.
+`scan-raw.py`-Polling): siehe [`CLAUDE.md`](CLAUDE.md#watcher-system-scheduled-tasks).
 
 ---
 
