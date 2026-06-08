@@ -1,0 +1,495 @@
+# /// script
+# dependencies = ["httpx", "python-dotenv", "pydantic", "pyyaml"]
+# ///
+"""
+Knowledge Tree — Code-Watcher: GitHub API Poller für alle konfigurierten Repos.
+
+Pollt alle N Minuten neue Commits und triggert code-extract.py + code-ingest.py.
+State (letzte verarbeitete SHA pro Repo) wird in .code-watch-state.json gespeichert.
+
+Usage:
+  uv run code-watch.py                          # einmalig alle Repos prüfen
+  uv run code-watch.py --loop                   # Endlosschleife (Daemon-Modus)
+  uv run code-watch.py --repo demand-ai         # nur ein Repo
+  uv run code-watch.py --since 2026-04-19T00:00:00Z  # ab Zeitstempel
+
+Konfiguration: $VAULT_ROOT/code-repos.yaml (enthält interne Repo-Namen, nicht in git)
+"""
+
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import logging
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent / ".env")
+except ImportError:
+    pass
+
+import httpx
+
+try:
+    import yaml
+    HAS_YAML = True
+except ImportError:
+    HAS_YAML = False
+
+from schemas import RepoConfig, WatchConfig
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+LOG_DIR = Path(__file__).parent / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    handlers=[logging.FileHandler(LOG_DIR / "code-watch.log", encoding="utf-8")],
+    format="%(asctime)s  %(levelname)-8s  %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+console = logging.StreamHandler(sys.stderr)
+console.setLevel(logging.INFO)
+console.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s", "%Y-%m-%d %H:%M:%S"))
+logging.getLogger().addHandler(console)
+log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Konstanten
+# ---------------------------------------------------------------------------
+
+SCRIPT_ROOT = Path(__file__).parent
+VAULT_ROOT = Path(os.environ.get("VAULT_ROOT", str(SCRIPT_ROOT)))
+STATE_FILE = VAULT_ROOT / ".code-watch-state.json"
+CONFIG_FILE = VAULT_ROOT / "code-repos.yaml"          # Hauptort (multi-machine via OneDrive)
+LEGACY_CONFIG_FILE = SCRIPT_ROOT / "code-repos.yaml"  # Übergang: alter Pfad im Code-Verzeichnis
+GITHUB_API = "https://api.github.com"
+EXTRACT_SCRIPT = SCRIPT_ROOT / "code-extract.py"
+INGEST_SCRIPT = SCRIPT_ROOT / "code-ingest.py"
+MANUAL_SCRIPT = SCRIPT_ROOT / "manual-ingest.py"
+
+# ---------------------------------------------------------------------------
+# Konfiguration laden
+# ---------------------------------------------------------------------------
+
+
+def load_config() -> WatchConfig:
+    """Lädt code-repos.yaml aus dem Vault. Fällt auf Legacy-Pfad oder Umgebungsvariablen zurück."""
+    token = os.environ.get("GITHUB_PAT", "")
+    if not token:
+        raise EnvironmentError("GITHUB_PAT muss in .env oder als Umgebungsvariable gesetzt sein")
+
+    config_path: Path | None = None
+    if CONFIG_FILE.exists():
+        config_path = CONFIG_FILE
+    elif LEGACY_CONFIG_FILE.exists():
+        log.warning(
+            "code-repos.yaml im Code-Verzeichnis gefunden (%s) — bitte nach %s verschieben.",
+            LEGACY_CONFIG_FILE, CONFIG_FILE,
+        )
+        config_path = LEGACY_CONFIG_FILE
+
+    if config_path is not None:
+        if not HAS_YAML:
+            raise ImportError("PyYAML nicht installiert: uv add pyyaml")
+        log.info("Lade Config: %s", config_path)
+        with config_path.open(encoding="utf-8") as f:
+            raw = yaml.safe_load(f)
+        raw["github_token"] = token  # aus .env überschreiben
+        return WatchConfig.model_validate(raw)
+
+    # Fallback: Minimal-Konfiguration aus Umgebungsvariablen
+    log.warning(
+        "code-repos.yaml nicht gefunden (gesucht: %s, %s) — verwende WATCH_REPO env var",
+        CONFIG_FILE, LEGACY_CONFIG_FILE,
+    )
+    watch_repo = os.environ.get("WATCH_REPO", "")
+    if not watch_repo or "/" not in watch_repo:
+        raise EnvironmentError(
+            f"code-repos.yaml nicht gefunden (gesucht: {CONFIG_FILE}) und WATCH_REPO nicht gesetzt.\n"
+            "Erstelle die Datei (siehe code-repos.yaml.example) oder setze WATCH_REPO=owner/repo in .env"
+        )
+    owner, repo = watch_repo.split("/", 1)
+    return WatchConfig(
+        github_token=token,
+        repos=[RepoConfig(name=repo, owner=owner, repo=repo)],
+    )
+
+
+# ---------------------------------------------------------------------------
+# State-Verwaltung
+# ---------------------------------------------------------------------------
+
+
+def load_state() -> dict[str, str]:
+    """Lädt letzten bekannten Commit-SHA pro Repo aus State-Datei."""
+    if STATE_FILE.exists():
+        try:
+            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            log.warning("State-Datei beschädigt — starte frisch")
+    return {}
+
+
+def save_state(state: dict[str, str]) -> None:
+    """Schreibt State atomar (temp + rename)."""
+    tmp = STATE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    tmp.replace(STATE_FILE)
+
+
+# ---------------------------------------------------------------------------
+# GitHub API
+# ---------------------------------------------------------------------------
+
+
+def _headers(token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+
+def get_new_commits(repo: RepoConfig, token: str, since: str | None) -> list[dict]:
+    """
+    Holt neue Commits seit `since` (ISO 8601) oder seit dem letzten bekannten SHA.
+    Gibt Commits älteste-zuerst zurück.
+    """
+    url = f"{GITHUB_API}/repos/{repo.owner}/{repo.repo}/commits"
+    params: dict[str, str] = {"sha": repo.branch, "per_page": "50"}
+    if since:
+        params["since"] = since
+
+    try:
+        resp = httpx.get(url, headers=_headers(token), params=params, timeout=30)
+
+        remaining = resp.headers.get("x-ratelimit-remaining", "?")
+        if remaining != "?" and int(remaining) < 100:
+            log.warning("Rate-Limit niedrig: %s verbleibend", remaining)
+
+        if resp.status_code == 404:
+            log.error("Repo nicht gefunden: %s/%s", repo.owner, repo.repo)
+            return []
+        if resp.status_code == 403:
+            log.error("Kein Zugriff auf %s/%s (403)", repo.owner, repo.repo)
+            return []
+        resp.raise_for_status()
+
+        commits = resp.json()
+        # älteste zuerst
+        return list(reversed(commits))
+
+    except httpx.NetworkError as e:
+        log.error("Netzwerkfehler bei %s/%s: %s", repo.owner, repo.repo, e)
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Pipeline-Ausführung
+# ---------------------------------------------------------------------------
+
+
+def run_pipeline(repo: RepoConfig, sha: str, token: str) -> bool:
+    """
+    Führt code-extract.py | code-ingest.py für einen Commit aus.
+    Gibt True bei Erfolg zurück.
+    """
+    log.info("  Pipeline: %s/%s @%s", repo.owner, repo.repo, sha[:8])
+
+    try:
+        # code-extract.py → JSON auf stdout
+        extract_proc = subprocess.run(
+            ["uv", "run", str(EXTRACT_SCRIPT), f"{repo.owner}/{repo.repo}", sha,
+             "--token", token, "--ticket-pattern", repo.ticket_pattern],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=VAULT_ROOT,
+            timeout=120,
+        )
+
+        if extract_proc.returncode != 0:
+            log.error("code-extract.py fehlgeschlagen (exit %d):\n%s",
+                      extract_proc.returncode, extract_proc.stderr[-500:])
+            return False
+
+        digest_json = extract_proc.stdout
+
+        # code-ingest.py liest JSON von stdin
+        ingest_proc = subprocess.run(
+            ["uv", "run", str(INGEST_SCRIPT)],
+            input=digest_json,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=VAULT_ROOT,
+            timeout=180,
+        )
+
+        if ingest_proc.returncode != 0:
+            log.error("code-ingest.py fehlgeschlagen (exit %d):\n%s",
+                      ingest_proc.returncode, ingest_proc.stderr[-500:])
+            return False
+
+        log.info("  OK — %s", sha[:8])
+        return True
+
+    except subprocess.TimeoutExpired:
+        log.error("Timeout bei %s/%s @%s", repo.owner, repo.repo, sha[:8])
+        return False
+    except Exception as e:
+        log.error("Unerwarteter Fehler: %s", e)
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Haupt-Poll-Schleife
+# ---------------------------------------------------------------------------
+
+
+def poll_once(config: WatchConfig, state: dict[str, str], args: argparse.Namespace) -> dict[str, str]:
+    """Pollt alle Repos einmal. Gibt aktualisierten State zurück."""
+    now = datetime.now(timezone.utc).isoformat()
+
+    for repo in config.repos:
+        # Filter wenn --repo gesetzt
+        if args.repo and args.repo != repo.name:
+            continue
+
+        repo_key = f"{repo.owner}/{repo.repo}"
+        last_sha = state.get(repo_key)
+
+        # Since-Timestamp: entweder CLI-Arg, aus State oder letzter bekannter SHA
+        since = args.since or None
+        if not since and not last_sha:
+            # Erstes Mal: nur letzten 24h
+            from datetime import timedelta
+            since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            log.info("Repo %s: erstes Polling — letzten 24h", repo_key)
+
+        log.info("Prüfe %s (branch: %s) ...", repo_key, repo.branch)
+        commits = get_new_commits(repo, config.github_token, since)
+
+        # Bereits verarbeitete SHAs überspringen
+        new_commits = []
+        found_last = last_sha is None
+        for c in commits:
+            sha = c["sha"]
+            if not found_last:
+                if sha == last_sha:
+                    found_last = True
+                continue
+            new_commits.append(sha)
+
+        if not new_commits:
+            log.info("  Keine neuen Commits.")
+            continue
+
+        log.info("  %d neue Commits gefunden.", len(new_commits))
+        last_ok_sha = last_sha
+
+        for sha in new_commits:
+            ok = run_pipeline(repo, sha, config.github_token)
+            if ok:
+                last_ok_sha = sha
+                state[repo_key] = sha
+                save_state(state)  # nach jedem Commit sichern
+            else:
+                log.warning("  Pipeline fehlgeschlagen für %s — überspringe", sha[:8])
+                break  # bei Fehler stoppen, nächstes Mal neu versuchen
+
+    # Manuals nur beim Gesamt-Poll prüfen, nicht bei --repo-Filter
+    if not args.repo:
+        state = watch_manuals(config, state)
+
+    return state
+
+
+# ---------------------------------------------------------------------------
+# Manuals-Watcher
+# ---------------------------------------------------------------------------
+
+
+def _file_mtime(path: Path) -> float:
+    """Gibt mtime als float zurück, 0.0 wenn Datei nicht existiert."""
+    try:
+        return path.stat().st_mtime
+    except FileNotFoundError:
+        return 0.0
+
+
+def _slugify_filename(stem: str) -> str:
+    """Dateinamen-Stem → Produkt-Slug (lowercase, kebab-case, ASCII-nahe)."""
+    s = stem.lower()
+    # deutsche Umlaute zuerst (sonst werden sie zu '-')
+    s = s.translate(str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"}))
+    # alles ausser a-z0-9 → '-'
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    s = s.strip("-")
+    return s or "unnamed"
+
+
+def watch_manuals(config: "WatchConfig", state: dict) -> dict:
+    """Scannt raw/manuals/*.pdf und startet manual-ingest.py für neue/geänderte Dateien.
+
+    - Jede PDF im Verzeichnis wird automatisch erfasst (kein Hard-Coding der Liste).
+    - `products:` in code-repos.yaml ist optional und wirkt als **Override** für
+      Slug / max_level / skip_images bei einzelnen Dateinamen.
+    - Für nicht-overridete Dateien wird der Slug aus dem Dateinamen abgeleitet
+      und `default_max_level` verwendet.
+    """
+    from schemas import ManualsWatchConfig
+
+    mcfg: ManualsWatchConfig | None = config.manuals
+    if not mcfg:
+        return state
+
+    manuals_dir = VAULT_ROOT / mcfg.watch_dir
+    if not manuals_dir.exists():
+        log.debug("Manuals-Verzeichnis nicht gefunden: %s", manuals_dir)
+        return state
+
+    log.info("Prüfe Handbücher in %s ...", manuals_dir)
+
+    # Overrides nach Dateiname indizieren (case-insensitive Lookup)
+    overrides = {m.file.lower(): m for m in mcfg.products}
+
+    # Verzeichnis scannen: alle PDFs, temporäre/versteckte Dateien ausschließen
+    pdf_files = sorted(
+        p for p in manuals_dir.iterdir()
+        if p.is_file()
+        and p.suffix.lower() == ".pdf"
+        and not p.name.startswith(("~$", "."))
+    )
+
+    if not pdf_files:
+        log.info("  Keine PDFs gefunden in %s", manuals_dir)
+
+    # Warnung für nicht-PDF-Dateien (z.B. .docm) — manual-ingest.py ist PDF-only
+    non_pdf = [
+        p.name for p in manuals_dir.iterdir()
+        if p.is_file()
+        and p.suffix.lower() in {".docm", ".docx", ".doc", ".odt"}
+        and not p.name.startswith(("~$", "."))
+    ]
+    for name in non_pdf:
+        log.warning("  Übersprungen (nicht-PDF): %s — manual-ingest.py unterstützt nur PDF", name)
+
+    for pdf_path in pdf_files:
+        override = overrides.get(pdf_path.name.lower())
+        if override:
+            product = override.product
+            max_level = override.max_level
+            file_skip_images = override.skip_images
+        else:
+            product = _slugify_filename(pdf_path.stem)
+            max_level = mcfg.default_max_level
+            file_skip_images = False
+
+        state_key = f"manual:{product}"
+        current_mtime = _file_mtime(pdf_path)
+        stored_mtime = state.get(state_key, 0.0)
+
+        if current_mtime <= stored_mtime:
+            log.debug("  %s unverändert — überspringe", pdf_path.name)
+            continue
+
+        origin = "override" if override else "auto-slug"
+        log.info("  NEU/GEÄNDERT: %s → %s (%s) → starte manual-ingest.py",
+                 pdf_path.name, product, origin)
+
+        cmd = [
+            "uv", "run", str(MANUAL_SCRIPT),
+            str(pdf_path),
+            "--product", product,
+            "--max-level", str(max_level),
+        ]
+        if file_skip_images or mcfg.skip_images:
+            cmd.append("--skip-images")
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=str(VAULT_ROOT),
+            )
+            if result.returncode == 0:
+                state[state_key] = current_mtime
+                save_state(state)
+                log.info("  OK — %s ingested", product)
+            else:
+                log.error("  manual-ingest.py fehlgeschlagen:\n%s", result.stderr[-1000:])
+        except Exception as e:
+            log.error("  Fehler beim Starten von manual-ingest.py: %s", e)
+
+    return state
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="GitHub Repos auf neue Commits beobachten und Code-Wiki aktualisieren.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Beispiele:
+  uv run code-watch.py                      # einmalig alle Repos prüfen
+  uv run code-watch.py --loop               # Daemon-Modus
+  uv run code-watch.py --repo demand-ai     # nur ein Repo
+  uv run code-watch.py --since 2026-04-19T00:00:00Z
+""",
+    )
+    parser.add_argument("--loop", action="store_true", help="Endlosschleife mit poll_interval_minutes Pause")
+    parser.add_argument("--repo", default="", help="Nur dieses Repo verarbeiten (name aus code-repos.yaml)")
+    parser.add_argument("--since", default="", help="ISO 8601 Timestamp: Commits ab diesem Zeitpunkt")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    config = load_config()
+    state = load_state()
+
+    if args.loop:
+        log.info("Daemon-Modus — Interval: %d Minuten", config.poll_interval_minutes)
+        while True:
+            log.info("=" * 60)
+            log.info("POLL-RUNDE — %s", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
+            log.info("=" * 60)
+            try:
+                state = poll_once(config, state, args)
+            except Exception as e:
+                log.error("Poll-Fehler: %s", e)
+            log.info("Warte %d Minuten...", config.poll_interval_minutes)
+            time.sleep(config.poll_interval_minutes * 60)
+    else:
+        log.info("=" * 60)
+        log.info("EINMALIGER POLL — %s", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
+        log.info("=" * 60)
+        state = poll_once(config, state, args)
+        log.info("Fertig.")
+
+
+if __name__ == "__main__":
+    main()
