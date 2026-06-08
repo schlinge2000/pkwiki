@@ -23,17 +23,25 @@ class RepoConfig(BaseModel):
 
 
 class ManualConfig(BaseModel):
-    file: str                           # Dateiname in watch_dir, z.B. "Handbuch.pdf"
-    product: str                        # Produkt-Slug, z.B. "addone-bo-admin"
+    """Optionaler Override für ein einzelnes Manual.
+
+    Ohne Eintrag wird der Slug automatisch aus dem Dateinamen abgeleitet und
+    `ManualsWatchConfig.default_max_level` verwendet. Diese Klasse erlaubt
+    abweichende Slugs (z.B. `addone-bo-admin` statt `administratorhandbuch-...`)
+    oder File-spezifisches `max_level` / `skip_images`.
+    """
+    file: str                           # exakter Dateiname in watch_dir
+    product: str                        # gewünschter Produkt-Slug
     max_level: int = 2                  # TOC-Tiefe
     skip_images: bool = False
 
 
 class ManualsWatchConfig(BaseModel):
     watch_dir: str = "raw/manuals"      # relativ zu VAULT_ROOT
-    default_max_level: int = 2
+    default_max_level: int = 2          # für alle nicht-overrideten PDFs
     skip_images: bool = False
-    products: list[ManualConfig] = []
+    products: list[ManualConfig] = []   # Overrides — alle PDFs im watch_dir werden
+                                        # automatisch erfasst, auch wenn nicht gelistet
 
 
 class WatchConfig(BaseModel):

@@ -13,6 +13,18 @@
 poll_interval_minutes: 15
 last_poll_state: .code-watch-state.json
 
+# Optional: PDF-Handbücher in raw/manuals/ werden automatisch erfasst.
+# `products:` weglassen, wenn die Auto-Slugs (aus Dateinamen) ok sind.
+# manuals:
+#   watch_dir: raw/manuals
+#   default_max_level: 2
+#   skip_images: false
+#   products:
+#     # Nur eintragen wenn der Auto-Slug nicht passt:
+#     - file: "Administratorhandbuch_addone_bo_ger.pdf"
+#       product: addone-bo-admin
+#       max_level: 2
+
 repos:
   # Eigene Repos
   - name: pkwiki

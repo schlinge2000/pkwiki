@@ -133,7 +133,14 @@ def get_chapters(doc: fitz.Document, max_level: int) -> list[dict]:
     toc = doc.get_toc()
     if not toc:
         # Kein TOC: gesamtes Dokument als ein Kapitel
-        return [{"level": 1, "title": "Inhalt", "start": 0, "end": doc.page_count}]
+        return [{
+            "level": 1,
+            "title": "Inhalt",
+            "start": 0,
+            "end": doc.page_count,
+            "slug": "inhalt",
+            "pages": doc.page_count,
+        }]
 
     # Nur bis max_level
     filtered = [(lvl, title, page - 1) for lvl, title, page in toc if lvl <= max_level]

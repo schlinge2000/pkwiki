@@ -23,6 +23,7 @@ import io
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
@@ -105,13 +106,17 @@ def load_config() -> WatchConfig:
     if config_path is not None:
         if not HAS_YAML:
             raise ImportError("PyYAML nicht installiert: uv add pyyaml")
+        log.info("Lade Config: %s", config_path)
         with config_path.open(encoding="utf-8") as f:
             raw = yaml.safe_load(f)
         raw["github_token"] = token  # aus .env überschreiben
         return WatchConfig.model_validate(raw)
 
     # Fallback: Minimal-Konfiguration aus Umgebungsvariablen
-    log.warning("code-repos.yaml nicht gefunden — verwende WATCH_REPO env var")
+    log.warning(
+        "code-repos.yaml nicht gefunden (gesucht: %s, %s) — verwende WATCH_REPO env var",
+        CONFIG_FILE, LEGACY_CONFIG_FILE,
+    )
     watch_repo = os.environ.get("WATCH_REPO", "")
     if not watch_repo or "/" not in watch_repo:
         raise EnvironmentError(
@@ -328,8 +333,26 @@ def _file_mtime(path: Path) -> float:
         return 0.0
 
 
+def _slugify_filename(stem: str) -> str:
+    """Dateinamen-Stem → Produkt-Slug (lowercase, kebab-case, ASCII-nahe)."""
+    s = stem.lower()
+    # deutsche Umlaute zuerst (sonst werden sie zu '-')
+    s = s.translate(str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"}))
+    # alles ausser a-z0-9 → '-'
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    s = s.strip("-")
+    return s or "unnamed"
+
+
 def watch_manuals(config: "WatchConfig", state: dict) -> dict:
-    """Prüft raw/manuals/ auf neue oder geänderte PDFs und startet manual-ingest.py."""
+    """Scannt raw/manuals/*.pdf und startet manual-ingest.py für neue/geänderte Dateien.
+
+    - Jede PDF im Verzeichnis wird automatisch erfasst (kein Hard-Coding der Liste).
+    - `products:` in code-repos.yaml ist optional und wirkt als **Override** für
+      Slug / max_level / skip_images bei einzelnen Dateinamen.
+    - Für nicht-overridete Dateien wird der Slug aus dem Dateinamen abgeleitet
+      und `default_max_level` verwendet.
+    """
     from schemas import ManualsWatchConfig
 
     mcfg: ManualsWatchConfig | None = config.manuals
@@ -343,29 +366,60 @@ def watch_manuals(config: "WatchConfig", state: dict) -> dict:
 
     log.info("Prüfe Handbücher in %s ...", manuals_dir)
 
-    for manual in mcfg.products:
-        pdf_path = manuals_dir / manual.file
-        if not pdf_path.exists():
-            log.debug("  PDF nicht gefunden: %s", manual.file)
-            continue
+    # Overrides nach Dateiname indizieren (case-insensitive Lookup)
+    overrides = {m.file.lower(): m for m in mcfg.products}
 
-        state_key = f"manual:{manual.product}"
+    # Verzeichnis scannen: alle PDFs, temporäre/versteckte Dateien ausschließen
+    pdf_files = sorted(
+        p for p in manuals_dir.iterdir()
+        if p.is_file()
+        and p.suffix.lower() == ".pdf"
+        and not p.name.startswith(("~$", "."))
+    )
+
+    if not pdf_files:
+        log.info("  Keine PDFs gefunden in %s", manuals_dir)
+
+    # Warnung für nicht-PDF-Dateien (z.B. .docm) — manual-ingest.py ist PDF-only
+    non_pdf = [
+        p.name for p in manuals_dir.iterdir()
+        if p.is_file()
+        and p.suffix.lower() in {".docm", ".docx", ".doc", ".odt"}
+        and not p.name.startswith(("~$", "."))
+    ]
+    for name in non_pdf:
+        log.warning("  Übersprungen (nicht-PDF): %s — manual-ingest.py unterstützt nur PDF", name)
+
+    for pdf_path in pdf_files:
+        override = overrides.get(pdf_path.name.lower())
+        if override:
+            product = override.product
+            max_level = override.max_level
+            file_skip_images = override.skip_images
+        else:
+            product = _slugify_filename(pdf_path.stem)
+            max_level = mcfg.default_max_level
+            file_skip_images = False
+
+        state_key = f"manual:{product}"
         current_mtime = _file_mtime(pdf_path)
         stored_mtime = state.get(state_key, 0.0)
 
         if current_mtime <= stored_mtime:
-            log.debug("  %s unverändert — überspringe", manual.file)
+            log.debug("  %s unverändert — überspringe", pdf_path.name)
             continue
 
-        log.info("  NEU/GEÄNDERT: %s → starte manual-ingest.py", manual.file)
+        origin = "override" if override else "auto-slug"
+        log.info("  NEU/GEÄNDERT: %s → %s (%s) → starte manual-ingest.py",
+                 pdf_path.name, product, origin)
 
         cmd = [
             "uv", "run", str(MANUAL_SCRIPT),
             str(pdf_path),
-            "--product", manual.product,
-            "--max-level", str(manual.max_level),
+            "--product", product,
+            "--max-level", str(max_level),
         ]
-        if manual.skip_images or mcfg.skip_images:
+        if file_skip_images or mcfg.skip_images:
             cmd.append("--skip-images")
 
         try:
@@ -380,7 +434,7 @@ def watch_manuals(config: "WatchConfig", state: dict) -> dict:
             if result.returncode == 0:
                 state[state_key] = current_mtime
                 save_state(state)
-                log.info("  OK — %s ingested", manual.product)
+                log.info("  OK — %s ingested", product)
             else:
                 log.error("  manual-ingest.py fehlgeschlagen:\n%s", result.stderr[-1000:])
         except Exception as e:
