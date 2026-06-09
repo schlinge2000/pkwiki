@@ -91,6 +91,90 @@ die Pipeline vollautomatisch im Hintergrund — ein paralleler Job zur Zeit.
 
 ---
 
+## Weitere Pipelines
+
+Neben dem Dokument-Ingest laufen drei zusätzliche Pipelines, die alle in denselben
+Wiki-Vault schreiben — getriggert durch Scheduled Tasks via [`watchers.json`](#watcher-system-scheduled-tasks).
+
+### Code-Wiki — GitHub-Commits als Wissensquelle
+
+```
+GitHub-Repos (z.B. demand-ai, scenario-mixture)
+        │
+        ▼ alle 15 Min via code-watch.py (GitHub API)
+┌───────────────────────────────────────────────────────┐
+│  code-extract.py                                      │
+│  Commit-Diff + Issue-Refs ──► CommitDigest-JSON       │
+└───────────────────────────────────────────────────────┘
+        │
+        ▼
+┌───────────────────────────────────────────────────────┐
+│  code-ingest.py                                       │
+│  CommitDigest ──► Azure OpenAI ──► Modul-/Ticket-Seiten│
+└───────────────────────────────────────────────────────┘
+        │
+        ├──► wiki/code-wiki/<projekt>/modules/<modul>.md
+        ├──► wiki/code-wiki/<projekt>/tickets/DAI-661.md
+        ├──► wiki/code-wiki/<projekt>/changelog.md
+        └──► wiki/code-wiki/<projekt>/index.md
+```
+
+`code-watch.py` pollt konfigurierte Repos (`$VAULT_ROOT/code-repos.yaml`, via OneDrive
+multi-machine-synchron), lädt neue Commits seit dem letzten State, schickt jeden Diff
+durchs LLM und erzeugt strukturierte Modul- und Ticket-Seiten. Tickets-Referenzen
+(`DAI-123`, `#42`) werden als Obsidian-Wikilinks (`[[123]]`, `[[42]]`) eingebettet —
+so entstehen automatisch Verbindungen zwischen Code-Änderungen und betroffenen Modulen.
+
+**Use Case:** Du fragst Claude *„Was hat sich in der forecasting-pipeline in den letzten
+zwei Wochen geändert?"* — er liest `wiki/code-wiki/demand-ai/changelog.md` plus die
+verlinkten Modul- und Ticket-Seiten und gibt eine narrative Antwort statt einer
+`git log`-Liste.
+
+### Handbücher — PDF-Produkthandbücher als Wiki
+
+```
+raw/manuals/Administratorhandbuch.pdf  (300 Seiten)
+        │
+        ▼
+┌───────────────────────────────────────────────────────┐
+│  manual-ingest.py                                     │
+│                                                       │
+│  PyMuPDF TOC ──► Kapitelstruktur (max-level 2)        │
+│  pro Kapitel:                                         │
+│    Text + Screenshots ──► Vision API                  │
+│    LLM ──► Schritt-für-Schritt-Wiki-Seite             │
+└───────────────────────────────────────────────────────┘
+        │
+        ├──► wiki/manuals/<produkt>/<kapitel>.md     (mit ![[bild.jpg]])
+        ├──► wiki/manuals/<produkt>/image-index.md
+        ├──► wiki/manuals/<produkt>/assets/*.jpg
+        └──► wiki/manuals/<produkt>/index.md
+```
+
+`code-watch.py` scannt `raw/manuals/*.pdf` per mtime — neue oder geänderte PDFs werden
+automatisch ingested. Der Produkt-Slug wird aus dem Dateinamen abgeleitet
+(Auto-Discovery); abweichende Slugs oder `max_level` lassen sich in
+`code-repos.yaml` pro Datei overriden.
+
+**Use Case:** Du fragst *„Wie konfiguriere ich Datenimport im ADD\*ONE BO Admin?"* —
+Claude liest `wiki/manuals/addone-bo-admin/index.md`, findet das passende Kapitel und
+zitiert wörtlich aus der Schritt-für-Schritt-Anleitung, inklusive eingebetteter
+UI-Screenshots.
+
+### Wiki-Archiv — versionierter Snapshot
+
+```
+$VAULT_ROOT/wiki/  ──► wiki-sync.py  ──►  github.com/schlinge2000/knowledge-wiki-archive
+                          │
+                          └─► alle 15 Min, optional bidirektional via --pull
+```
+
+Der lokale Vault wird über OneDrive zwischen Maschinen synchronisiert; `wiki-sync.py`
+pusht zusätzlich nach GitHub. Das Archiv ist Backup, Audit-Trail und (perspektivisch)
+Eingangspunkt für GitHub Actions, die ohne lokale Maschine ingesten können.
+
+---
+
 ## Wiki-Seitentypen
 
 ### `concepts/` — Konzept- und Technologieseiten
@@ -125,6 +209,20 @@ Zusammenfassung mit Autor, Kontext und Kernaussagen — als Einstiegspunkt pro D
 
 Vom LLM erkannte Muster und Verbindungen über mehrere Quellen hinweg.
 
+### `code-wiki/<projekt>/` — Code-Wissensbasis aus GitHub-Commits
+
+Pro überwachtem Repo ein Ordner mit `index.md`, `changelog.md`, `modules/<modul>.md`
+(Architektur, Abhängigkeiten, offene Punkte) und `tickets/<id>.md` (Ticket-Beschreibung
++ betroffene Module). Ticket-Referenzen in Commit-Messages (`DAI-123`, `#42`) werden
+automatisch als Wikilinks verdrahtet.
+
+### `manuals/<produkt>/` — PDF-Produkthandbücher
+
+Eine Markdown-Seite pro Handbuchkapitel mit Schritt-für-Schritt-Anleitungen, eingebetteten
+UI-Screenshots (`![[bild.jpg]]`) und Querverweisen auf andere Kapitel. `image-index.md`
+listet alle Screenshots mit Vision-API-Beschreibungen — durchsuchbar und
+präsentationsfähig.
+
 ### `index.md` + `log.md` — immer automatisch aktualisiert
 
 `index.md` listet alle Wiki-Seiten. `log.md` ist ein Append-only-Aktivitätslog jeder
@@ -155,46 +253,80 @@ Die Qualität der Wissensbasis hängt direkt vom verwendeten Modell ab. Der Inge
 git clone <repo-url> knowledge-wiki
 cd knowledge-wiki
 
-# 2. Azure-Credentials eintragen
+# 2. Credentials eintragen
 cp .env.example .env
 # .env oeffnen und Werte setzen (siehe unten)
 
-# 3. Watcher als Windows Scheduled Task registrieren (startet automatisch bei Login):
-powershell -ExecutionPolicy Bypass -File .\register-task.ps1
+# 3. Komplettes Setup (Vault, Scheduled Tasks, Connectivity-Check):
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
 
-# Oder manuell starten (ohne Task Scheduler):
+# Alternativ nur den Dokument-Watcher manuell starten:
 powershell -ExecutionPolicy Bypass -File .\watch.ps1
 ```
+
+`setup.ps1` registriert einen Bootstrap-Task `KnowledgeTree-MetaSync`, der alle 15 Min
+`watchers.json` mit den Windows Scheduled Tasks abgleicht. Neue Watcher hinzufügen =
+Eintrag in `$VAULT_ROOT/watchers.json` anhängen — kein erneutes `setup.ps1` nötig.
 
 ### Watcher-Status prüfen
 
 ```powershell
-# Status beider Watcher (Wiki + Knowledge Tree):
+# Status aller registrierten Tasks:
 powershell -ExecutionPolicy Bypass -File .\watcher-status.ps1
 
-# Manuell starten/stoppen:
-Start-ScheduledTask -TaskName "KnowledgeWikiWatcher"
-Stop-ScheduledTask  -TaskName "KnowledgeWikiWatcher"
+# MetaSync sofort triggern (nach watchers.json-Änderung):
+Start-ScheduledTask -TaskName KnowledgeTree-MetaSync
 ```
 
 ### Konfiguration (`.env`)
 
 ```env
+# Pflicht — Dokument-Ingest
 AZURE_OPENAI_API_KEY=...
 AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
-AZURE_OPENAI_DEPLOYMENT=gpt-4o
-AZURE_OPENAI_API_VERSION=2025-04-01-preview   # optional, neueste Version empfohlen
+AZURE_OPENAI_DEPLOYMENT=gpt-4.1
+AZURE_OPENAI_API_VERSION=2025-04-01-preview
+
+# Vault-Pfad (wo wiki/, raw/, assets/ liegen — z.B. OneDrive-Ordner)
+VAULT_ROOT=C:\Users\<user>\OneDrive - <Firma>\knowledge-wiki
+
+# Optional — Code-Wiki (GitHub-Monitoring via code-watch.py)
+GITHUB_PAT=<personal-access-token>      # Scope: repo:read
+
+# Optional — Wiki-Archiv-Sync (wiki-sync.py)
+WIKI_ARCHIVE_PAT=<personal-access-token>  # Scope: repo
+WIKI_ARCHIVE_REPO=<owner>/<archive-repo>
 ```
+
+`VAULT_ROOT` ist neu zentral: Code (dieses Repo) und Daten (wiki/, raw/) sind getrennt.
+Setz ihn auf einen OneDrive/SharePoint-Pfad — dann sind Vault, `watchers.json` und
+`code-repos.yaml` automatisch zwischen Maschinen synchron.
 
 ### Erste Dokumente verarbeiten
 
 ```powershell
 # Einzelnes Dokument
-python ingest.py raw/pdfs/mein-paper.pdf
+uv run ingest.py raw/pdfs/mein-paper.pdf
 
-# Alle Dateien in raw/ auf einmal (Batch-Extraktion + Ingest)
-.\extract-all.ps1
+# Alle Dateien in raw/ auf einmal
+.\batch-ingest.ps1
 ```
+
+### Code-Wiki aktivieren (optional)
+
+```powershell
+# 1. Template ins Vault kopieren (macht setup.ps1 normalerweise automatisch)
+Copy-Item code-repos.yaml.example "$env:VAULT_ROOT\code-repos.yaml"
+
+# 2. Repos eintragen (Owner/Name, Branch, Sprache, Ticket-Pattern)
+notepad "$env:VAULT_ROOT\code-repos.yaml"
+
+# 3. Einmal manuell testen
+uv run code-watch.py
+```
+
+Danach lädt `KnowledgeTree-CodeWatch` (in `watchers.json` definiert) alle 15 Min neue
+Commits, ingested sie und scannt zusätzlich `raw/manuals/` auf neue PDFs.
 
 ---
 
@@ -301,27 +433,49 @@ ohne Neustart. Cluster im Graph View entsprechen Kernthemen.
 ## Verzeichnisstruktur
 
 ```
-raw/               # Rohdokumente — hierhin neue Dateien ablegen
-  pdfs/            # Papers, Reports, Whitepapers
-  slides/          # Präsentationen (PPTX)
-  docs/            # Word-Dokumente
-  links/           # Web-Artikel als .md-Dateien
-  inbox/           # Temporärer Eingang
-  .cache/          # Auto-generierte Extrakte (nicht in Git)
+raw/                # Rohdokumente — hierhin neue Dateien ablegen
+  pdfs/             # Papers, Reports, Whitepapers
+  slides/           # Präsentationen (PPTX)
+  docs/             # Word-Dokumente
+  links/            # Web-Artikel als .md-Dateien
+  manuals/          # PDF-Handbücher (eigene Pipeline: manual-ingest.py)
+  inbox/            # Temporärer Eingang
+  .cache/           # Auto-generierte Extrakte (nicht in Git)
 
-wiki/              # Die Wissensbasis — nur lokal + OneDrive-Sync
-  index.md         # Inhaltsverzeichnis aller Seiten
-  log.md           # Append-only Aktivitätslog
-  concepts/        # Konzept- und Technologieseiten
-  entities/        # Personen, Unternehmen, Produkte
-  sources/         # Zusammenfassung je Quelldokument
-  syntheses/       # Themenübergreifende Analysen
+wiki/               # Die Wissensbasis — nur lokal + OneDrive-Sync
+  index.md          # Inhaltsverzeichnis aller Seiten
+  log.md            # Append-only Aktivitätslog
+  picture_index.md  # Bild-Index (für QUERY/Präsentationen)
+  concepts/         # Konzept- und Technologieseiten
+  entities/         # Personen, Unternehmen, Produkte
+  sources/          # Zusammenfassung je Quelldokument
+  syntheses/        # Themenübergreifende Analysen
+  code-wiki/        # Auto: GitHub-Commits → Modul- und Ticket-Seiten
+    <projekt>/      # index.md, changelog.md, modules/, tickets/
+  manuals/          # Auto: PDF-Handbücher → Kapitelseiten + Bilder
+    <produkt>/      # index.md, image-index.md, assets/, <kapitel>.md
 
-ingest.py          # Haupt-Pipeline: Dokument → Wiki-Seiten
-extract.py         # Extraktion: PPTX/DOCX/PDF → Markdown + Vision
-watch.ps1          # Watcher: neue Dateien in raw/ → automatischer Ingest
-CLAUDE.md          # Schema & Regeln für den LLM-Maintainer
-.env.example       # Vorlage fur Azure-Credentials
+# Dokument-Pipeline
+ingest.py           # Haupt-Pipeline: Dokument → Wiki-Seiten
+extract.py          # Extraktion: PPTX/DOCX/PDF → Markdown + Vision
+extract-images.py   # Batch-Vision für Bilder
+watch.ps1           # FileSystemWatcher für raw/
+
+# Code-Wiki-Pipeline
+code-watch.py       # GitHub-Poller + raw/manuals/-Scanner
+code-extract.py     # Commit-Diff → CommitDigest
+code-ingest.py      # CommitDigest → wiki/code-wiki/
+manual-ingest.py    # PDF-Handbuch → wiki/manuals/<produkt>/
+wiki-sync.py        # Wiki-MD → GitHub-Archiv
+
+# Watcher-Infrastruktur
+setup.ps1           # Ersteinrichtung + MetaSync-Task
+sync-watchers.ps1   # watchers.json → Scheduled Tasks
+watchers.json       # Aktive Watcher-Liste (Template, Vault-Version aktiv)
+code-repos.yaml.example  # Template für überwachte GitHub-Repos
+
+CLAUDE.md           # Schema & Regeln für den LLM-Maintainer
+.env.example        # Vorlage für Credentials + VAULT_ROOT
 ```
 
 ---
