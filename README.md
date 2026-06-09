@@ -150,51 +150,151 @@ Die Qualität der Wissensbasis hängt direkt vom verwendeten Modell ab. Der Inge
 
 ## Einrichtung
 
+Die Architektur trennt **Code** (dieses Repo, lokal geklont) von **Daten** (Vault in
+OneDrive / SharePoint, automatisch zwischen Maschinen synchron). Credentials,
+`watchers.json` und `code-repos.yaml` liegen kanonisch im **Vault** — neue Maschine =
+nur klonen + `VAULT_ROOT` setzen, der Rest kommt über OneDrive mit.
+
+### Voraussetzungen (einmalig pro Maschine)
+
+- [`uv`](https://docs.astral.sh/uv/) — `winget install astral-sh.uv`
+- `git`
+- Azure OpenAI Ressource (Vision-fähig, GPT-4.1+)
+- OneDrive/SharePoint-Pfad als Vault (z.B. `C:\Users\<user>\OneDrive - <Firma>\knowledge-wiki`)
+
+### Schritt 1 — Repo klonen und `VAULT_ROOT` setzen
+
 ```powershell
-# 1. Repository klonen
-git clone <repo-url> knowledge-wiki
-cd knowledge-wiki
+git clone <repo-url> C:\Code\knowledge-wiki
+cd C:\Code\knowledge-wiki
 
-# 2. Azure-Credentials eintragen
-cp .env.example .env
-# .env oeffnen und Werte setzen (siehe unten)
-
-# 3. Watcher als Windows Scheduled Task registrieren (startet automatisch bei Login):
-powershell -ExecutionPolicy Bypass -File .\register-task.ps1
-
-# Oder manuell starten (ohne Task Scheduler):
-powershell -ExecutionPolicy Bypass -File .\watch.ps1
+# Persistente Windows-User-Env-Variable — alle Skripte lesen daraus die Vault-.env:
+setx VAULT_ROOT "C:\Users\<user>\OneDrive - <Firma>\knowledge-wiki"
+# Neue Shell öffnen, damit setx greift.
 ```
+
+### Schritt 2 — Vault-`.env` anlegen
+
+Im **Vault**-Verzeichnis (nicht im Code-Verzeichnis!) eine `.env` aus der
+[Vorlage](.env.example) anlegen. So liegt sie in OneDrive und ist automatisch auf
+allen Maschinen verfügbar.
+
+```powershell
+New-Item -ItemType Directory -Force "$env:VAULT_ROOT" | Out-Null
+Copy-Item .env.example "$env:VAULT_ROOT\.env"
+notepad "$env:VAULT_ROOT\.env"
+```
+
+```env
+# Pflicht — Dokument-Ingest
+AZURE_OPENAI_ENDPOINT=https://<resource>.cognitiveservices.azure.com/
+AZURE_OPENAI_API_KEY=<key>
+AZURE_OPENAI_DEPLOYMENT=gpt-4.1
+AZURE_OPENAI_API_VERSION=2025-04-01-preview
+
+# Vault-Pfad (redundant zur Windows-Env, aber explizit dokumentiert)
+VAULT_ROOT=C:\Users\<user>\OneDrive - <Firma>\knowledge-wiki
+
+# Optional — Code-Wiki (code-watch.py pollt GitHub-Repos)
+GITHUB_PAT=<personal-access-token>          # Scope: repo:read
+
+# Optional — Wiki-Archiv-Sync (wiki-sync.py)
+WIKI_ARCHIVE_PAT=<personal-access-token>    # Scope: repo
+WIKI_ARCHIVE_REPO=<owner>/<archive-repo>
+```
+
+**Load-Order der Skripte** (erste gefundene Quelle gewinnt, `override=False`):
+1. OS-Umgebungsvariablen (z.B. via `setx`)
+2. `$VAULT_ROOT/.env` — **kanonisch, OneDrive-synced**
+3. `<repo>/.env` — optional, lokaler Override pro Maschine
+
+### Schritt 3 — `setup.ps1` ausführen
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+Idempotent — kann beliebig oft laufen. `setup.ps1`:
+
+1. Prüft `uv` und `git`
+2. Legt die Vault-Verzeichnisstruktur an (`wiki/`, `raw/`, `assets/`, `logs/`)
+3. Testet die Azure-OpenAI-Verbindung via `test-connection.py`
+4. Kopiert `watchers.json` und `code-repos.yaml.example` ins Vault (falls noch nicht da)
+5. Registriert den Bootstrap-Task `KnowledgeTree-MetaSync` (läuft alle 15 Min,
+   syncht `$VAULT_ROOT/watchers.json` mit den Windows Scheduled Tasks)
+6. Führt MetaSync einmal sofort aus → alle `KnowledgeTree-*`-Tasks werden registriert
+
+Danach laufen die Watcher (`PkwikiWatch`, `WikiSync`, `WikiPull`, `CodeWatch`) automatisch.
+Verifizieren:
+
+```powershell
+Get-ScheduledTask -TaskName 'KnowledgeTree-*' | Format-Table TaskName, State
+uv run test-connection.py    # erwartet: "OK — <deployment> antwortet: OK"
+```
+
+### Schritt 4 — Erstes Dokument verarbeiten
+
+```powershell
+# Datei nach raw/ legen — der at_logon-Watcher PkwikiWatch ingestet sie automatisch
+Copy-Item mein-paper.pdf "$env:VAULT_ROOT\raw\pdfs\"
+
+# Oder explizit:
+uv run ingest.py "$env:VAULT_ROOT\raw\pdfs\mein-paper.pdf"
+
+# Massen-Ingest aller bisher unverarbeiteten Dateien:
+.\batch-ingest.ps1
+```
+
+### Code-Wiki aktivieren (optional)
+
+`setup.ps1` hat `code-repos.yaml` im Vault aus dem Template angelegt. Vor dem ersten
+Run die zu überwachenden Repos eintragen (Owner/Name, Branch, Sprache, Ticket-Pattern):
+
+```powershell
+notepad "$env:VAULT_ROOT\code-repos.yaml"
+uv run code-watch.py    # Single-Poll-Test (kein --loop)
+```
+
+Sobald die YAML steht, ingested `KnowledgeTree-CodeWatch` alle 15 Min neue Commits und
+scannt zusätzlich `raw/manuals/` auf neue PDF-Handbücher.
+
+### Zweite Maschine aufsetzen
+
+Da Vault, `.env`, `watchers.json` und `code-repos.yaml` alle in OneDrive liegen,
+reichen vier Befehle:
+
+```powershell
+git clone <repo-url> C:\Code\knowledge-wiki
+cd C:\Code\knowledge-wiki
+setx VAULT_ROOT "C:\Users\<user>\OneDrive - <Firma>\knowledge-wiki"
+# Neue Shell:
+.\setup.ps1
+```
+
+`setup.ps1` erkennt die vorhandenen Vault-Dateien (überschreibt nichts) und registriert
+nur die Scheduled Tasks lokal.
 
 ### Watcher-Status prüfen
 
 ```powershell
-# Status beider Watcher (Wiki + Knowledge Tree):
-powershell -ExecutionPolicy Bypass -File .\watcher-status.ps1
+# Übersicht aller Tasks:
+Get-ScheduledTask -TaskName 'KnowledgeTree-*' | Format-Table TaskName, State
 
-# Manuell starten/stoppen:
-Start-ScheduledTask -TaskName "KnowledgeWikiWatcher"
-Stop-ScheduledTask  -TaskName "KnowledgeWikiWatcher"
+# Detailliert (Last-Run, Last-Result, Working-Dir):
+.\watcher-status.ps1
+
+# MetaSync sofort triggern (nach watchers.json-Änderung):
+Start-ScheduledTask -TaskName KnowledgeTree-MetaSync
 ```
 
-### Konfiguration (`.env`)
+### Troubleshooting
 
-```env
-AZURE_OPENAI_API_KEY=...
-AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
-AZURE_OPENAI_DEPLOYMENT=gpt-4o
-AZURE_OPENAI_API_VERSION=2025-04-01-preview   # optional, neueste Version empfohlen
-```
-
-### Erste Dokumente verarbeiten
-
-```powershell
-# Einzelnes Dokument
-python ingest.py raw/pdfs/mein-paper.pdf
-
-# Alle Dateien in raw/ auf einmal (Batch-Extraktion + Ingest)
-.\extract-all.ps1
-```
+| Symptom | Ursache | Fix |
+|---|---|---|
+| `GITHUB_PAT muss in .env oder als Umgebungsvariable gesetzt sein` | `VAULT_ROOT` nicht in der Shell, in der der Scheduled Task läuft | `setx VAULT_ROOT "..."` ausführen, Shell neu starten, Tasks neu registrieren via `.\setup.ps1` |
+| `KnowledgeTree-*` Task `LastResult: 0x1` | Working-Directory zeigt auf nicht-existierenden Pfad | `Get-ScheduledTask 'KnowledgeTree-*'` prüfen; `setup.ps1` re-registriert mit korrektem Pfad |
+| `code-repos.yaml nicht gefunden` | Datei noch nicht im Vault | `setup.ps1` legt sie aus dem Template an; ggf. manuell `Copy-Item code-repos.yaml.example "$env:VAULT_ROOT\code-repos.yaml"` |
+| Vision-API gibt nur `[Vision-Fehler]` zurück | Azure-Deployment fehlt Vision-Fähigkeit | In `.env` ein Vision-fähiges Deployment setzen (GPT-4.1+) |
 
 ---
 
