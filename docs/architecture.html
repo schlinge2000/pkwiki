@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knowledge Tree — Architektur</title>
+<style>
+:root {
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --surface2:  #21262d;
+  --border:    #30363d;
+  --accent:    #f78166;
+  --blue:      #58a6ff;
+  --green:     #3fb950;
+  --yellow:    #e3b341;
+  --purple:    #bc8cff;
+  --text:      #e6edf3;
+  --muted:     #8b949e;
+  --dim:       #484f58;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Slides ── */
+.deck { width: 100vw; height: 100vh; position: relative; }
+
+.slide {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  padding: 48px 64px;
+  opacity: 0; pointer-events: none;
+  transition: opacity .35s ease;
+}
+.slide.active { opacity: 1; pointer-events: all; }
+
+/* ── Nav ── */
+.nav {
+  position: fixed; bottom: 28px; left: 0; right: 0;
+  display: flex; justify-content: center; align-items: center; gap: 16px;
+  z-index: 100;
+}
+.nav button {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); padding: 8px 18px; border-radius: 6px;
+  cursor: pointer; font-size: 14px; transition: background .15s;
+}
+.nav button:hover { background: var(--border); }
+.nav button:disabled { opacity: .3; cursor: default; }
+.nav .counter { color: var(--muted); font-size: 13px; min-width: 60px; text-align: center; }
+
+/* ── Typography ── */
+.slide-label {
+  font-size: 11px; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--muted);
+  margin-bottom: 12px; align-self: flex-start;
+}
+h1 { font-size: 52px; font-weight: 700; line-height: 1.1; }
+h2 { font-size: 32px; font-weight: 600; margin-bottom: 32px; align-self: flex-start; }
+.sub { font-size: 20px; color: var(--muted); margin-top: 12px; }
+.accent  { color: var(--accent); }
+.blue    { color: var(--blue); }
+.green   { color: var(--green); }
+.yellow  { color: var(--yellow); }
+.purple  { color: var(--purple); }
+
+/* ── Boxes ── */
+.box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 18px;
+  font-size: 13px; line-height: 1.5;
+}
+.box.accent-border  { border-color: var(--accent); }
+.box.blue-border    { border-color: var(--blue); }
+.box.green-border   { border-color: var(--green); }
+.box.yellow-border  { border-color: var(--yellow); }
+.box.purple-border  { border-color: var(--purple); }
+
+.box-label {
+  font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+}
+.box-title { font-size: 15px; font-weight: 600; }
+.box-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* ── Arrows ── */
+.arrow-r::after { content: "→"; color: var(--dim); padding: 0 8px; font-size: 18px; }
+.arrow-d        { text-align: center; color: var(--dim); font-size: 18px; margin: 6px 0; }
+
+/* ── Flow row ── */
+.flow {
+  display: flex; align-items: center; gap: 0;
+  flex-wrap: wrap; justify-content: center;
+}
+.flow .box { flex-shrink: 0; }
+
+/* ── Grid layouts ── */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; width: 100%; }
+
+/* ── Tag chips ── */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.chip {
+  font-size: 11px; padding: 3px 10px; border-radius: 20px;
+  border: 1px solid var(--border); color: var(--muted); background: var(--surface2);
+}
+
+/* ── Vault tree (slide 2) ── */
+.vault-tree {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 0; width: 100%; max-width: 760px;
+}
+.vault-level {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 24px; width: 100%; position: relative;
+  background: var(--surface);
+}
+.vault-level + .vault-level { margin-top: 0; }
+.vault-connector {
+  width: 2px; height: 24px; background: var(--border); margin: 0 auto;
+}
+.vault-level .badge {
+  font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; padding: 2px 8px; border-radius: 4px;
+  margin-bottom: 6px; display: inline-block;
+}
+.badge-company  { background: #1c2d3a; color: var(--blue); }
+.badge-team     { background: #1c2d1c; color: var(--green); }
+.badge-personal { background: #2d1c2d; color: var(--purple); }
+.vault-level .side-note {
+  position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  font-size: 11px; color: var(--muted); text-align: right;
+}
+
+/* ── Pipeline (slide 3) ── */
+.pipeline {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 0; width: 100%;
+}
+.pipe-row {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%;
+}
+.pipe-step {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 16px; min-width: 180px;
+}
+.pipe-step .num {
+  font-size: 10px; color: var(--muted); font-weight: 700;
+  letter-spacing: .08em; margin-bottom: 3px;
+}
+.pipe-step .name { font-size: 14px; font-weight: 600; }
+.pipe-step .detail { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.pipe-arrow {
+  font-size: 20px; color: var(--dim); flex-shrink: 0;
+}
+.pipe-connector {
+  width: 1px; height: 16px; background: var(--border);
+  margin-left: 28px;
+}
+.pipe-note {
+  font-size: 11px; color: var(--muted); padding: 6px 14px;
+  background: var(--surface2); border-radius: 6px; white-space: nowrap;
+}
+
+/* ── Code monitoring (slide 4) ── */
+.monitor-flow {
+  display: grid; grid-template-columns: auto 40px auto 40px auto;
+  align-items: center; gap: 8px; width: 100%;
+}
+.monitor-arrow { text-align: center; color: var(--dim); font-size: 20px; }
+
+/* ── Overview (slide 6) ── */
+.overview {
+  display: grid;
+  grid-template-columns: 200px 60px 200px 60px 200px;
+  grid-template-rows: auto 32px auto 32px auto;
+  align-items: center; justify-items: center;
+  gap: 0; width: 100%; max-width: 860px;
+}
+.ov-arrow { font-size: 22px; color: var(--dim); }
+.ov-arrow.down { font-size: 18px; }
+
+/* ── Title slide ── */
+.title-slide { gap: 0; }
+.title-slide h1 { font-size: 60px; }
+.title-dot { color: var(--accent); }
+.title-meta {
+  margin-top: 40px; display: flex; gap: 24px;
+  font-size: 13px; color: var(--muted);
+}
+.title-meta span::before { content: "·"; margin-right: 24px; color: var(--dim); }
+.title-meta span:first-child::before { content: none; }
+
+/* ── Tag line under title ── */
+.tagline {
+  font-size: 18px; color: var(--muted); margin-top: 14px;
+  font-weight: 400;
+}
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+
+  <!-- ── Slide 1: Titel ── -->
+  <div class="slide active" id="s1">
+    <div class="slide-label">Knowledge Tree</div>
+    <h1>Enterprise<br>Knowledge<span class="title-dot">.</span></h1>
+    <p class="tagline">Hierarchisches Multi-User Knowledge OS — Systemarchitektur</p>
+    <div class="title-meta">
+      <span>Python 3.13 · Azure OpenAI · GitHub API</span>
+      <span>SharePoint · OneDrive · Obsidian</span>
+      <span>2026</span>
+    </div>
+  </div>
+
+  <!-- ── Slide 2: Vault-Hierarchie ── -->
+  <div class="slide" id="s2">
+    <div class="slide-label">Struktur</div>
+    <h2>Vault-Hierarchie</h2>
+    <div class="vault-tree">
+
+      <div class="vault-level blue-border" style="width:100%">
+        <div class="badge badge-company">Company</div>
+        <div class="box-title">_company/wiki/</div>
+        <div class="box-sub">Unternehmensweites Wissen · aggregiert aus allen Teams</div>
+        <div class="side-note">GitHub Actions<br>Ingest-Service</div>
+      </div>
+
+      <div class="vault-connector"></div>
+
+      <div class="vault-level green-border" style="width:85%">
+        <div class="badge badge-team">Team</div>
+        <div class="box-title">_team-demand-ai/wiki/</div>
+        <div class="box-sub">Team-Wissen · Code-Monitoring · Synthesen</div>
+        <div class="side-note">GitHub Repos<br>demand-ai · pkwiki</div>
+      </div>
+
+      <div class="vault-connector"></div>
+
+      <div class="vault-level purple-border" style="width:70%">
+        <div class="badge badge-personal">Personal</div>
+        <div class="box-title">_personal-christian/wiki/</div>
+        <div class="box-sub">Persönliches Wissen · OneDrive-Sync</div>
+        <div class="side-note">Lokal · Obsidian</div>
+      </div>
+
+    </div>
+    <p style="margin-top:20px;font-size:12px;color:var(--muted)">
+      Jeder Node hat eigene <code style="color:var(--blue)">wiki/</code> · <code style="color:var(--blue)">raw/</code> · <code style="color:var(--blue)">assets/</code> Ordner · Sharded Domain-Index
+    </p>
+  </div>
+
+  <!-- ── Slide 3: Ingest-Pipeline ── -->
+  <div class="slide" id="s3">
+    <div class="slide-label">Ingest</div>
+    <h2>Ingest-Pipeline</h2>
+    <div class="pipeline">
+
+      <div class="pipe-row">
+        <div class="pipe-step accent-border">
+          <div class="num">INPUT</div>
+          <div class="name">Quelldokument</div>
+          <div class="detail">PPTX · PDF · DOCX · .md</div>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">
+          <div class="num">SCHRITT 1</div>
+          <div class="name" style="color:var(--blue)">extract.py</div>
+          <div class="detail">PPTX/PDF/DOCX → Markdown · Vision API</div>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">
+          <div class="num">SCHRITT 2</div>
+          <div class="name" style="color:var(--yellow)">classify_document()</div>
+          <div class="detail">~500 Tokens · Domain bestimmen</div>
+        </div>
+      </div>
+
+      <div class="pipe-connector" style="margin-left:calc(180px + 24px + 12px + 180px + 12px + 24px + 12px + 50px)"></div>
+
+      <div class="pipe-row" style="flex-direction:row-reverse">
+        <div class="pipe-step green-border">
+          <div class="num">OUTPUT</div>
+          <div class="name">Wiki-Seiten + Index</div>
+          <div class="detail">3–10 MD-Seiten · Domain-Index · log.md</div>
+        </div>
+        <div class="pipe-arrow">←</div>
+        <div class="pipe-step">
+          <div class="num">SCHRITT 5</div>
+          <div class="name" style="color:var(--green)">update_domain_index()</div>
+          <div class="detail">index-{domain}.md · index.md</div>
+        </div>
+        <div class="pipe-arrow">←</div>
+        <div class="pipe-step">
+          <div class="num">SCHRITT 3+4</div>
+          <div class="name" style="color:var(--accent)">LLM-Hauptaufruf</div>
+          <div class="detail">Domain-Kontext → GPT-4.1 → write_pages()</div>
+        </div>
+      </div>
+
+    </div>
+    <div class="chips" style="margin-top:20px">
+      <span class="chip">Pydantic Structured Output</span>
+      <span class="chip">Lock-Datei für parallele Ingests</span>
+      <span class="chip">Cache für extrahierte Dokumente</span>
+      <span class="chip">Sharded Domain Index (skaliert auf 10k+ Seiten)</span>
+    </div>
+  </div>
+
+  <!-- ── Slide 4: Code-Monitoring ── -->
+  <div class="slide" id="s4">
+    <div class="slide-label">Code</div>
+    <h2>Code-Repository-Monitoring</h2>
+    <div style="width:100%;max-width:820px">
+
+      <div class="flow" style="justify-content:flex-start;gap:0;margin-bottom:20px">
+        <div class="box blue-border">
+          <div class="box-label">Source</div>
+          <div class="box-title">GitHub Repos</div>
+          <div class="box-sub">demand-ai · pkwiki · …</div>
+        </div>
+        <span style="padding:0 10px;color:var(--dim);font-size:20px">→</span>
+        <div class="box">
+          <div class="box-label">Poll alle 15 min</div>
+          <div class="box-title" style="color:var(--blue)">code-watch.py</div>
+          <div class="box-sub">GitHub API · PAT · Commit-Diff</div>
+        </div>
+        <span style="padding:0 10px;color:var(--dim);font-size:20px">→</span>
+        <div class="box">
+          <div class="box-label">Extraktion</div>
+          <div class="box-title" style="color:var(--yellow)">code-extract.py</div>
+          <div class="box-sub">Diff → CommitDigest</div>
+        </div>
+        <span style="padding:0 10px;color:var(--dim);font-size:20px">→</span>
+        <div class="box green-border">
+          <div class="box-label">Ingest</div>
+          <div class="box-title" style="color:var(--green)">code-ingest.py</div>
+          <div class="box-sub">→ code-wiki/ · wiki/meta/</div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="box">
+          <div class="box-label">Konfiguration</div>
+          <div class="box-title">code-repos.yaml</div>
+          <div class="box-sub">Repo-Liste · Branch · Ticket-Pattern<br>in .gitignore (interne Repo-Namen)</div>
+        </div>
+        <div class="box">
+          <div class="box-label">State</div>
+          <div class="box-title">.code-watch-state.json</div>
+          <div class="box-sub">Last-seen SHA pro Repo<br>Verhindert doppelten Ingest</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Slide 5: Archivierung & Mobile ── -->
+  <div class="slide" id="s5">
+    <div class="slide-label">Zugriff</div>
+    <h2>Archivierung &amp; Mobile-Zugriff</h2>
+    <div style="width:100%;max-width:780px;display:flex;flex-direction:column;gap:0;align-items:center">
+
+      <div class="flow" style="justify-content:center;gap:0;width:100%">
+
+        <div class="box blue-border" style="text-align:center;min-width:150px">
+          <div class="box-label">Storage</div>
+          <div class="box-title">OneDrive Vault</div>
+          <div class="box-sub">Alle wiki/ Ordner<br>aller Nodes</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;padding:0 8px">
+          <span style="color:var(--dim);font-size:20px">→</span>
+          <span style="font-size:10px;color:var(--muted);margin-top:2px">alle 15 Min</span>
+        </div>
+
+        <div class="box yellow-border" style="text-align:center;min-width:150px">
+          <div class="box-label">Sync-Skript</div>
+          <div class="box-title" style="color:var(--yellow)">wiki-sync.py</div>
+          <div class="box-sub">Windows Task Scheduler<br>nur geänderte Dateien</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;padding:0 8px">
+          <span style="color:var(--dim);font-size:20px">→</span>
+          <span style="font-size:10px;color:var(--muted);margin-top:2px">git push</span>
+        </div>
+
+        <div class="box green-border" style="text-align:center;min-width:150px">
+          <div class="box-label">GitHub (privat)</div>
+          <div class="box-title" style="color:var(--green)">knowledge-wiki-archive</div>
+          <div class="box-sub">Versionierter Snapshot<br>aller MD-Dateien</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;padding:0 8px">
+          <span style="color:var(--dim);font-size:20px">→</span>
+          <span style="font-size:10px;color:var(--muted);margin-top:2px">Upload</span>
+        </div>
+
+        <div class="box accent-border" style="text-align:center;min-width:150px">
+          <div class="box-label">Mobile Zugriff</div>
+          <div class="box-title" style="color:var(--accent)">Claude Projects</div>
+          <div class="box-sub">claude.ai · iPhone<br>Wiki als Kontext</div>
+        </div>
+
+      </div>
+
+      <div style="margin-top:28px;width:100%">
+        <div class="box" style="padding:16px 24px">
+          <div class="box-label">GitHub Actions — Cloud-Ingest</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+            <span style="font-size:13px;color:var(--muted)">workflow_dispatch</span>
+            <span style="color:var(--dim)">→</span>
+            <span class="chip" style="background:var(--surface2)">source_url</span>
+            <span class="chip" style="background:var(--surface2)">node</span>
+            <span style="color:var(--dim)">→</span>
+            <span style="font-size:13px;color:var(--blue)">ingest.py</span>
+            <span style="color:var(--dim)">→</span>
+            <span style="font-size:13px;color:var(--yellow)">wiki-sync.py</span>
+            <span style="color:var(--dim)">→</span>
+            <span style="font-size:13px;color:var(--green)">archive</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Slide 6: Gesamtübersicht ── -->
+  <div class="slide" id="s6">
+    <div class="slide-label">Übersicht</div>
+    <h2>Gesamtsystem</h2>
+    <div style="width:100%;max-width:900px;display:grid;grid-template-columns:1fr 44px 1fr 44px 1fr;grid-template-rows:auto 32px auto 32px auto;align-items:center;justify-items:center;gap:0">
+
+      <!-- Row 1 -->
+      <div class="box blue-border" style="width:100%;text-align:center">
+        <div class="box-label">Input</div>
+        <div class="box-title">PPTX · PDF · DOCX · md</div>
+      </div>
+      <div style="font-size:22px;color:var(--dim)">→</div>
+      <div class="box" style="width:100%;text-align:center">
+        <div class="box-label">Extraktion + Ingest</div>
+        <div class="box-title" style="color:var(--blue)">extract.py</div>
+        <div class="box-title" style="color:var(--accent)">ingest.py</div>
+      </div>
+      <div style="font-size:22px;color:var(--dim)">→</div>
+      <div class="box green-border" style="width:100%;text-align:center">
+        <div class="box-label">Wissen</div>
+        <div class="box-title" style="color:var(--green)">OneDrive Vault</div>
+        <div class="box-sub">_company · _team · _personal</div>
+      </div>
+
+      <!-- Row 1→2 connectors -->
+      <div></div><div></div>
+      <div style="width:1px;height:28px;background:var(--border)"></div>
+      <div></div>
+      <div style="width:1px;height:28px;background:var(--border)"></div>
+
+      <!-- Row 2 -->
+      <div class="box" style="width:100%;text-align:center">
+        <div class="box-label">Code-Monitoring</div>
+        <div class="box-title" style="color:var(--yellow)">code-watch.py</div>
+        <div class="box-sub">GitHub API · 15 min Poll</div>
+      </div>
+      <div style="font-size:22px;color:var(--dim)">→</div>
+      <div class="box yellow-border" style="width:100%;text-align:center">
+        <div class="box-label">Synthese</div>
+        <div class="box-title" style="color:var(--yellow)">tree-synthesize.py</div>
+        <div class="box-sub">Personal → Team → Company</div>
+      </div>
+      <div style="font-size:22px;color:var(--dim)">→</div>
+      <div class="box" style="width:100%;text-align:center">
+        <div class="box-label">PM-View</div>
+        <div class="box-title" style="color:var(--purple)">pm-synthesize.py</div>
+        <div class="box-sub">Cross-Team Aggregation</div>
+      </div>
+
+      <!-- Row 2→3 connectors -->
+      <div></div><div></div><div></div><div></div>
+      <div style="width:1px;height:28px;background:var(--border)"></div>
+
+      <!-- Row 3 -->
+      <div></div><div></div><div></div>
+      <div style="font-size:22px;color:var(--dim)">→</div>
+      <div class="box accent-border" style="width:100%;text-align:center">
+        <div class="box-label">Archiv + Zugriff</div>
+        <div class="box-title" style="color:var(--yellow)">wiki-sync.py</div>
+        <div class="box-sub">→ GitHub Archive → <span style="color:var(--accent)">Claude</span></div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- /deck -->
+
+<!-- ── Navigation ── -->
+<nav class="nav">
+  <button id="btn-prev" onclick="go(-1)" disabled>← Zurück</button>
+  <span class="counter" id="counter">1 / 6</span>
+  <button id="btn-next" onclick="go(1)">Weiter →</button>
+</nav>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+const total  = slides.length;
+let cur = 0;
+
+function go(dir) {
+  slides[cur].classList.remove('active');
+  cur = Math.max(0, Math.min(total - 1, cur + dir));
+  slides[cur].classList.add('active');
+  document.getElementById('counter').textContent = (cur + 1) + ' / ' + total;
+  document.getElementById('btn-prev').disabled = cur === 0;
+  document.getElementById('btn-next').disabled = cur === total - 1;
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ')  go(1);
+  if (e.key === 'ArrowLeft')                     go(-1);
+});
+</script>
+</body>
+</html>

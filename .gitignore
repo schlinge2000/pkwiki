@@ -1,5 +1,11 @@
 # Secrets
 .env
+*.env
+
+# Vault-Inhalte (SharePoint/OneDrive-Sync, nicht in Git)
+_company/
+_team-*/
+_personal-*/
 
 # Rohdokumente (grosse Binärdateien — nicht in Git)
 raw/
@@ -13,6 +19,15 @@ __pycache__/
 *.pyo
 .venv/
 .uv/
+*.code-workspace
+
+# Konfiguration mit internen Repo-Namen
+code-repos.yaml
+vault-tree.yaml
+
+# Watch-State
+.code-watch-state.json
+*.lock
 
 # Windows
 Thumbs.db

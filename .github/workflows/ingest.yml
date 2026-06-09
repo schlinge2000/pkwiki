@@ -1,0 +1,56 @@
+name: Ingest & Wiki Archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_url:
+        description: "URL zur Quelldatei (PPTX/PDF/DOCX/.md) — öffentlich abrufbar oder SAS-URL"
+        required: true
+      source_name:
+        description: "Dateiname inkl. Endung (z.B. forecast-2025.pptx)"
+        required: true
+      node:
+        description: "Vault-Node: company | team-demand-ai | personal-christian"
+        default: "company"
+        required: false
+
+jobs:
+  ingest-and-archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Download source file
+        run: |
+          mkdir -p incoming
+          curl -fsSL "${{ github.event.inputs.source_url }}" \
+            -o "incoming/${{ github.event.inputs.source_name }}"
+          echo "Datei: $(du -sh incoming/${{ github.event.inputs.source_name }})"
+
+      - name: Run ingest
+        env:
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+          AZURE_OPENAI_API_VERSION: "2025-04-01-preview"
+          VAULT_ROOT: ${{ github.workspace }}
+        run: |
+          uv run ingest.py \
+            "incoming/${{ github.event.inputs.source_name }}" \
+            --node "${{ github.event.inputs.node }}"
+
+      - name: Sync wiki to archive repo
+        env:
+          WIKI_ARCHIVE_PAT: ${{ secrets.WIKI_ARCHIVE_PAT }}
+          WIKI_ARCHIVE_REPO: schlinge2000/knowledge-wiki-archive
+          VAULT_ROOT: ${{ github.workspace }}
+        run: |
+          uv run wiki-sync.py

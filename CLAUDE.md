@@ -68,7 +68,7 @@ wiki/                  # Alles hier wird von Dir gepflegt
 
 ## Automatisierung
 
-### watch.ps1 — Datei-Watcher (raw/ außer manuals/)
+### watch.ps1 — FileSystemWatcher (raw/ außer manuals/)
 ```powershell
 powershell -ExecutionPolicy Bypass -File ".\watch.ps1"
 ```
@@ -76,6 +76,7 @@ powershell -ExecutionPolicy Bypass -File ".\watch.ps1"
 - Ruft automatisch `ingest.py <datei>` auf
 - **Startup-Scan:** beim Start werden alle Dateien ohne Cache-Eintrag nachverarbeitet
 - `raw/manuals/` und `raw/transcripts/` werden bewusst ignoriert — eigene Pipelines
+- Läuft als `at_logon`-Daemon (unbegrenzt) — siehe Watcher-System unten
 
 ### transcript-ingest.py — Teams-Transkripte (eigene Pipeline)
 ```bash
@@ -100,14 +101,107 @@ uv run manual-ingest.py raw/manuals/foo.pdf --dry-run          # Kapitelstruktur
 uv run manual-ingest.py raw/manuals/foo.pdf --only-chapters 6  # Nur Kapitel 6 neu generieren
 ```
 - Erzeugt `wiki/manuals/<produkt>/` mit Kapitelseiten, Bild-Index, Bilder in `assets/`
-- Wird automatisch vom `code-watch.py` (knowledge-tree) getriggert wenn PDF neu/geändert
+- Wird automatisch von `code-watch.py` getriggert wenn PDF neu/geändert
+- Auto-Discovery: alle PDFs in `raw/manuals/*.pdf` werden erfasst — `products:`-Liste in
+  `code-repos.yaml` ist optional und wirkt als Slug-Override pro Datei
 
-### code-watch.py — GitHub-Commits + Handbücher (knowledge-tree)
+### code-watch.py — GitHub-Commits + Handbücher
 ```bash
-uv run code-watch.py --loop   # Daemon: GitHub-Commits + manuals/
+uv run code-watch.py            # Single-Poll (für Scheduled Task)
+uv run code-watch.py --loop     # Daemon-Modus (nur für Debugging)
 ```
-- Pollt GitHub-Repos auf neue Commits → code-extract.py → code-ingest.py
-- Prüft Änderungen in `raw/manuals/` per mtime und startet manual-ingest.py
+- Pollt GitHub-Repos auf neue Commits → `code-extract.py` → `code-ingest.py`
+- Prüft Änderungen in `raw/manuals/` per mtime und startet `manual-ingest.py`
+- Config: `$VAULT_ROOT/code-repos.yaml` (Multi-Machine via OneDrive), Fallback auf
+  Repo-internen Pfad. Template: `code-repos.yaml.example`
+
+### Sonstige Pipeline-Skripte
+
+| Skript | Zweck |
+|--------|-------|
+| `code-extract.py` | GitHub-Commit-Diff → CommitDigest-JSON |
+| `code-ingest.py` | CommitDigest → `wiki/code-wiki/<projekt>/` |
+| `extract-images.py` | Batch-Vision für Bilder aus PPTX/PDF |
+| `synthesize.py` | LLM-Synthese aus mehreren Quellen |
+| `generate.py` | PPTX aus Konzept-/Synthese-Seiten erzeugen |
+| `pm-synthesize.py` | Team-/PM-View-Aggregation |
+| `wiki-sync.py` | Wiki-MD → `knowledge-wiki-archive` (GitHub) |
+| `scan-raw.py` | Generischer File-Watcher (Polling-Wrapper für Projekte ohne eigenen Watcher) |
+| `rebuild-index.py` | Regeneriert `wiki/index.md` aus YAML-Frontmatter |
+| `rebuild-code-wiki-index.py` | Patcht Obsidian-Wikilinks in `wiki/code-wiki/` (Ticket-↔-Modul-Verlinkung) |
+| `test-connection.py` | Smoke-Test der Azure-OpenAI- und GitHub-Verbindung |
+
+---
+
+## Watcher-System (Scheduled Tasks)
+
+Windows Scheduled Tasks werden aus einer deklarativen Config im Vault verwaltet.
+Neue Watcher hinzufügen = JSON-Eintrag anhängen, ohne `setup.ps1` neu laufen zu lassen.
+
+### Dateien
+
+| Pfad | Rolle |
+|------|-------|
+| `watchers.json` (Repo) | Template, wird beim ersten Setup in den Vault kopiert |
+| `$VAULT_ROOT/watchers.json` | **Aktive Watcher-Config** — hier editieren |
+| `code-repos.yaml.example` (Repo) | Template für `code-watch.py` |
+| `$VAULT_ROOT/code-repos.yaml` | **Aktive Repo-Liste** — hier editieren (OneDrive multi-machine-synchron) |
+| `sync-watchers.ps1` | Syncht Config → Scheduled Tasks (CREATE/UPDATE/DELETE) |
+| `setup.ps1` | Ersteinrichtung: Templates kopieren, MetaSync-Task registrieren |
+
+### Config-Schema (`watchers.json`)
+
+```json
+{
+  "watchers": [
+    {
+      "name": "WikiSync",
+      "cwd": "C:\\code\\knowledge-wiki",
+      "script": "wiki-sync.py",
+      "args": [],
+      "runner": "uv",
+      "trigger": "interval",
+      "interval_minutes": 15,
+      "timeout_minutes": 10,
+      "description": "..."
+    }
+  ]
+}
+```
+
+- `name` → Task wird als `KnowledgeTree-<name>` registriert
+- `cwd` → Script-Wurzel (pro Eintrag separat, damit weitere Code-Projekte ihre Watcher anhängen können)
+- `script` → Datei relativ zu `cwd` (Python oder `.ps1`)
+- `runner` → `"uv"` (default, ruft `uv run <script>`) oder `"powershell"` (für `.ps1`-Watcher)
+- `trigger` → `"interval"` (Single-Poll alle N Min) oder `"at_logon"` (Daemon, startet beim Login — für langlaufende `FileSystemWatcher`-Skripte)
+- `interval_minutes` / `timeout_minutes` → nur bei `trigger: "interval"`; `at_logon`-Daemons laufen unbegrenzt
+
+### MetaSync (Live-Reload)
+
+`setup.ps1` registriert **einen** Bootstrap-Task `KnowledgeTree-MetaSync`, der alle 15 Min
+`sync-watchers.ps1` ausführt. Änderungen an `watchers.json` wirken binnen 15 Min;
+sofort triggern via:
+
+```powershell
+Start-ScheduledTask -TaskName KnowledgeTree-MetaSync
+# oder direkt:
+powershell -ExecutionPolicy Bypass -File .\sync-watchers.ps1
+```
+
+### File-Watcher: zwei Muster
+
+**1. Projekt hat eigenen Daemon** (z.B. `watch.ps1` mit nativem `FileSystemWatcher`):
+per `runner: "powershell"` + `trigger: "at_logon"` direkt einbinden — Echtzeit-Reaktion,
+kein Polling.
+
+**2. Projekt hat nur Per-Datei-Ingest** (kein eigener Watcher): `scan-raw.py` als
+generischer Polling-Wrapper. Scannt periodisch, pflegt State (`path → mtime`), ruft den
+Ingest-Befehl pro neuer/geänderter Datei. `interval_minutes: 1` ist das Windows-Minimum.
+
+### Konvention: Single-Poll statt Loop
+
+Watcher-Skripte führen **einen** Durchlauf aus und beenden sich. Der Task Scheduler
+taktet das Intervall (analog zu cron). `--loop`-Modi existieren nur noch für Debugging.
 
 ---
 

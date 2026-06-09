@@ -1,0 +1,53 @@
+﻿# code-repos.yaml.example
+# Kopiere nach $VAULT_ROOT/code-repos.yaml und trage deine Repos ein
+# (setup.ps1 erledigt das automatisch beim ersten Setup).
+# Die Datei liegt im Vault (nicht im Code-Repo), damit die Repo-Liste
+# ueber OneDrive zwischen Maschinen synchronisiert wird.
+#
+# GITHUB_PAT kommt aus .env -- hier NICHT eintragen.
+# Scope benoetigt: repo (fuer private Org-Repos)
+# Token erstellen: https://github.com/settings/tokens/new?scopes=repo&description=knowledge-tree
+# WICHTIG fuer private Orgs: nach Token-Erstellung SSO autorisieren
+#   -> github.com/settings/tokens -> Configure SSO -> Org autorisieren
+
+poll_interval_minutes: 15
+last_poll_state: .code-watch-state.json
+
+# Optional: PDF-Handbücher in raw/manuals/ werden automatisch erfasst.
+# `products:` weglassen, wenn die Auto-Slugs (aus Dateinamen) ok sind.
+# manuals:
+#   watch_dir: raw/manuals
+#   default_max_level: 2
+#   skip_images: false
+#   products:
+#     # Nur eintragen wenn der Auto-Slug nicht passt:
+#     - file: "Administratorhandbuch_addone_bo_ger.pdf"
+#       product: addone-bo-admin
+#       max_level: 2
+
+repos:
+  # Eigene Repos
+  - name: pkwiki
+    owner: schlinge2000
+    repo: pkwiki
+    branch: main
+    language: python
+    ticket_pattern: '#\d+'
+    privacy: personal
+
+  - name: scenario-moe
+    owner: schlinge2000
+    repo: scenario-mixture
+    branch: main
+    language: python,typescript
+    ticket_pattern: '#\d+'
+    privacy: personal
+
+  # Private Org-Repos (PAT mit repo-Scope + SSO-Autorisierung)
+  - name: demand-ai
+    owner: inform-addone
+    repo: demand-ai
+    branch: main
+    language: python
+    ticket_pattern: 'DAI-\d+|#\d+'
+    privacy: internal
