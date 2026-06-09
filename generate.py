@@ -12,6 +12,7 @@ Usage:
 Default-Template: templates/inform-master-de.potx
 """
 
+import os
 import sys
 import io
 import json
@@ -28,7 +29,11 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="repla
 # .env laden falls vorhanden
 try:
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).parent / ".env")
+    # Order: OS env > Vault .env (kanonisch, OneDrive-synced) > Script-local .env (Fallback)
+    _vault = os.environ.get("VAULT_ROOT")
+    if _vault:
+        load_dotenv(Path(_vault) / ".env", override=False)
+    load_dotenv(Path(__file__).parent / ".env", override=False)
 except ImportError:
     pass
 
