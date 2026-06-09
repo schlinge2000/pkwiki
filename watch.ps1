@@ -48,12 +48,13 @@ function Invoke-StartupScan {
     $supportedExt = @('.txt', '.pptx', '.docx', '.pdf')
 
     $files = Get-ChildItem $rawPath -Recurse -File | Where-Object {
-        # .cache-Ordner und manuals-Ordner (eigene Pipeline) ausschliessen
-        $_.FullName -notmatch '\\\.cache\\' -and
-        $_.FullName -notmatch '\\manuals\\'  -and
-        $_.Name     -notmatch '~\$'          -and
-        $_.Name     -notmatch '\.tmp$'       -and
-        $_.Name     -notmatch 'README'       -and
+        # .cache, manuals und transcripts (jeweils eigene Pipeline) ausschliessen
+        $_.FullName -notmatch '\\\.cache\\'    -and
+        $_.FullName -notmatch '\\manuals\\'    -and
+        $_.FullName -notmatch '\\transcripts\\' -and
+        $_.Name     -notmatch '~\$'            -and
+        $_.Name     -notmatch '\.tmp$'         -and
+        $_.Name     -notmatch 'README'         -and
         $supportedExt -contains $_.Extension.ToLower()
     }
 
@@ -102,12 +103,13 @@ $action = {
     $name       = $Event.SourceEventArgs.Name
     $changeType = $Event.SourceEventArgs.ChangeType
 
-    # Ignoriere temp-Dateien und .cache-Ordner
-    if ($name  -match '~\$'         -or
-        $name  -match '\.tmp$'      -or
-        $name  -match 'README'      -or
-        $path  -match '\\\.cache\\' -or
-        $path  -match '\\manuals\\') {
+    # Ignoriere temp-Dateien, .cache, manuals und transcripts (eigene Pipelines)
+    if ($name  -match '~\$'             -or
+        $name  -match '\.tmp$'          -or
+        $name  -match 'README'          -or
+        $path  -match '\\\.cache\\'     -or
+        $path  -match '\\manuals\\'     -or
+        $path  -match '\\transcripts\\') {
         return
     }
 
