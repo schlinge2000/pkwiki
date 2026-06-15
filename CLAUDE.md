@@ -22,6 +22,9 @@ raw/                   # Unveränderliche Quellen — NUR LESEN, niemals modifiz
   manuals/             # PDF-Handbücher (eigene Pipeline: manual-ingest.py)
   .cache/              # Intern: extrahierte Texte + Bilder (nicht anfassen)
 
+Clippings/             # Obsidian-Web-Clipper-Ablage (.md) — eigene Pipeline: clippings-ingest.py
+                       #   liegt im Vault-Root (Obsidian-Default), NICHT unter raw/
+
 wiki/                  # Alles hier wird von Dir gepflegt
   index.md             # Inhaltsverzeichnis aller Wiki-Seiten
   log.md               # Append-only Aktivitätslog
@@ -94,6 +97,19 @@ uv run transcript-ingest.py raw/transcripts/foo.docx --no-ingest   # Nur Cache, 
 **Wo finde ich das Teams-Transkript?**
 Nicht lokal — in der Cloud. Teams öffnen → Kalender → Meeting → **Recap** → **Transkript** → **Herunterladen** als `.docx`. Datei dann nach `raw/transcripts/` legen und `transcript-ingest.py` aufrufen.
 
+### clippings-ingest.py — Obsidian-Web-Clipper-Clips (eigene Pipeline)
+```bash
+uv run clippings-ingest.py              # Single-Poll: neue/geänderte Clips ingesten
+uv run clippings-ingest.py --force      # alle Clips erneut ingesten
+uv run clippings-ingest.py --dry-run    # nur anzeigen, kein LLM-Aufruf
+uv run clippings-ingest.py --clippings-dir <pfad>   # abweichender Ordner
+```
+- Der **Obsidian Web Clipper** speichert geclippte Web-Seiten als `.md` im Vault-Ordner `Clippings/` — **außerhalb von `raw/`**, daher sieht `watch.ps1` sie nicht. Diese Pipeline schließt die Lücke.
+- Scannt `Clippings/**/*.md` und ruft für jede neue/geänderte Datei den regulären `ingest.py`-Flow auf — fachlich wie eine `raw/links`-Quelle (Web-Artikel → Quellenübersicht + Konzepte + `index.md`/`log.md`).
+- Eigener State (`path → mtime`) in `.clippings-state.json`, weil `ingest.py` für `.md`-Inputs keinen `raw/.cache`-Eintrag schreibt (Dedup wie bei `scan-raw.py`).
+- Läuft als Scheduled Task `WikiClippings` (Single-Poll alle 15 Min, siehe `watchers.json`). `cwd` defaultet auf den Repo-Root, daher keine Pfad-Argumente nötig.
+- **Alternativ** kann man den Web-Clipper-Zielordner direkt auf `raw/links/` umstellen — dann übernimmt der reguläre Watcher. Default-Clippings + diese Pipeline ist aber der wartungsärmere Weg (kein Obsidian-Reconfig).
+
 ### manual-ingest.py — PDF-Handbücher
 ```bash
 uv run manual-ingest.py raw/manuals/Handbuch.pdf --product produkt-slug --max-level 2
@@ -119,6 +135,7 @@ uv run code-watch.py --loop     # Daemon-Modus (nur für Debugging)
 
 | Skript | Zweck |
 |--------|-------|
+| `clippings-ingest.py` | Obsidian-Web-Clipper-Clips (`Clippings/*.md`) → regulärer `ingest.py`-Flow |
 | `code-extract.py` | GitHub-Commit-Diff → CommitDigest-JSON |
 | `code-ingest.py` | CommitDigest → `wiki/code-wiki/<projekt>/` |
 | `extract-images.py` | Batch-Vision für Bilder aus PPTX/PDF |

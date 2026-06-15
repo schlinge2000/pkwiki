@@ -409,6 +409,8 @@ raw/               # Rohdokumente — hierhin neue Dateien ablegen
   inbox/           # Temporärer Eingang
   .cache/          # Auto-generierte Extrakte (nicht in Git)
 
+Clippings/         # Obsidian-Web-Clipper-Ablage (.md) — Pipeline: clippings-ingest.py
+
 wiki/              # Die Wissensbasis — nur lokal + OneDrive-Sync
   index.md         # Inhaltsverzeichnis aller Seiten
   log.md           # Append-only Aktivitätslog
@@ -420,6 +422,7 @@ wiki/              # Die Wissensbasis — nur lokal + OneDrive-Sync
 ingest.py          # Haupt-Pipeline: Dokument → Wiki-Seiten
 extract.py         # Extraktion: PPTX/DOCX/PDF → Markdown + Vision
 watch.ps1          # Watcher: neue Dateien in raw/ → automatischer Ingest
+clippings-ingest.py # Pipeline: Obsidian-Web-Clipper-Clips (Clippings/*.md) → Wiki
 CLAUDE.md          # Schema & Regeln für den LLM-Maintainer
 .env.example       # Vorlage fur Azure-Credentials
 ```

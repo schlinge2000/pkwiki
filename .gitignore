@@ -10,6 +10,9 @@ _personal-*/
 # Rohdokumente (grosse Binärdateien — nicht in Git)
 raw/
 
+# Obsidian-Web-Clipper-Ablage (Vault-Inhalt, OneDrive-Sync reicht)
+Clippings/
+
 # Wiki-Vault (generierter Inhalt — OneDrive-Sync reicht)
 wiki/
 
@@ -27,6 +30,7 @@ vault-tree.yaml
 
 # Watch-State
 .code-watch-state.json
+.clippings-state.json
 *.lock
 
 # Windows
