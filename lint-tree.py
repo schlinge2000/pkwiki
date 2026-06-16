@@ -155,8 +155,46 @@ def main() -> int:
                     warns.append(f"{name}: clearance '{clearance}' niedriger als Eltern "
                                  f"'{parent}' ({p_rights['clearance']}) — kann Eltern-Layer nicht lesen")
 
+    # --- Agenten-Capability-Profile (T2) ----------------------------------
+    rights_of = {n["node"]: n.get("rights") for n in nodes
+                 if isinstance(n, dict) and n.get("node")}
+    agents = data.get("agents", []) or []
+
+    for a in agents:
+        if not isinstance(a, dict) or not a.get("id"):
+            warns.append(f"Agent-Eintrag ohne 'id' übersprungen: {a!r}")
+            continue
+        aid = a["id"]
+        clearance = a.get("clearance")
+
+        if clearance not in VISIBILITY_LEVELS:
+            errors.append(f"agent {aid}: ungültige clearance '{clearance}' "
+                          f"(erlaubt: {', '.join(VISIBILITY_LEVELS)})")
+
+        for r in a.get("read_scope", []) or []:
+            if r not in names:
+                errors.append(f"agent {aid}: read_scope-Node '{r}' existiert nicht im Baum")
+
+        ws = a.get("write_scope")
+        if ws != "session" and ws not in names:
+            errors.append(f"agent {aid}: write_scope '{ws}' ist weder 'session' noch ein Node im Baum")
+
+        # Low-Trust-Agent (sieht nur bis customer) sollte ephemer schreiben, nicht persistent
+        if clearance in VISIBILITY_LEVELS and rank(clearance) <= rank("customer") \
+                and ws in names:
+            warns.append(f"agent {aid}: niedrige clearance '{clearance}' schreibt in persistenten "
+                         f"Node '{ws}' — Sandbox/'session' empfohlen (T4)")
+
+        # Agent darf nicht in einen Node schreiben, dessen Seiten er nicht lesen könnte
+        if ws in names and clearance in VISIBILITY_LEVELS:
+            wr = rights_of.get(ws)
+            if isinstance(wr, dict) and wr.get("default_visibility") in VISIBILITY_LEVELS \
+                    and rank(wr["default_visibility"]) > rank(clearance):
+                errors.append(f"agent {aid}: write_scope '{ws}' erzeugt Seiten (default_visibility "
+                              f"'{wr['default_visibility']}') über clearance '{clearance}' — unlesbar")
+
     # --- Report -----------------------------------------------------------
-    print(f"vault-tree: {config}  ({len(nodes)} Nodes)\n")
+    print(f"vault-tree: {config}  ({len(nodes)} Nodes, {len(agents)} Agenten)\n")
 
     print(f"## ERROR ({len(errors)})")
     for e in errors:

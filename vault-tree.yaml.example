@@ -62,5 +62,28 @@ tree:
       read: [personal-christian, team-demand-ai, company]   # self + alle Vorfahren
       write: [personal-christian]
 
+# agents: (Epic #28 / T2) — Capability-Profile, die clearance + read/write-Scope an einen
+#   Agenten binden. Effektiver Lesezugriff auf eine Seite:
+#       rank(visibility) <= rank(clearance)  UND  node(seite) ∈ read_scope
+#   write_scope: existierender Node ODER 'session' (ephemerer Sandbox-Node, kein Persist im Baum).
+#   Prüfung: uv run lint-tree.py
+agents:
+  # Externer Produkt-Agent: in eine Software (z.B. ADD*ONE) eingebettet, bedient
+  # externe Software-User. Sieht nur public/customer; schreibt in einen ephemeren
+  # Session-Sandbox-Node, damit externer Input kein internes Gedächtnis vergiftet (T4).
+  - id: product-forecast-assistant
+    description: "In ADD*ONE eingebetteter Assistent für externe Software-User"
+    clearance: customer
+    read_scope: [company]
+    write_scope: session
+
+  # Interner Team-Copilot: liest den eigenen Team-Layer + Company (nach oben),
+  # schreibt Team-Wissen. clearance 'team' deckt public..team ab (inkl. company-internal).
+  - id: internal-demand-ai-copilot
+    description: "Interner Copilot für das Team demand-ai"
+    clearance: team
+    read_scope: [team-demand-ai, company]
+    write_scope: team-demand-ai
+
 poll_interval_minutes: 15
 last_poll_state: .code-watch-state.json

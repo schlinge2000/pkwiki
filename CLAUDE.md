@@ -370,6 +370,34 @@ rights:
 - **`clearance` nimmt nach unten nicht ab** — sonst könnte ein Kind den Eltern-Layer nicht lesen.
 - Prüfung: `uv run lint-tree.py [--strict]` validiert diese Regeln gegen die Hierarchie.
 
+### Agenten-Capabilities (`vault-tree.yaml` › `agents:`)
+
+Ein Agent erhält ein Capability-Profil, das `clearance` (Lese-Obergrenze) mit Read-/Write-Scope
+verbindet. **Effektiver Lesezugriff** auf eine Seite:
+
+> `rank(visibility) <= rank(clearance)`  **und**  `node(seite) ∈ read_scope`
+
+```yaml
+agents:
+  - id: <slug>
+    clearance: <stufe>          # höchste visibility, die der Agent lesen darf
+    read_scope:  [<node>, ...]  # Nodes, deren Inhalt sichtbar ist
+    write_scope: <node> | session   # 'session' = ephemerer Sandbox-Node (kein Persist)
+```
+
+Zwei Referenz-Profile (in `vault-tree.yaml.example`):
+
+| Profil | clearance | read_scope | write_scope |
+|--------|-----------|------------|-------------|
+| **Produkt-Agent** (externe Software-User) | `customer` | freigegebene Nodes (z.B. `company`) | `session` (Sandbox) |
+| **Interner Team-Copilot** | `team` | eigener Team-Node + `company` | eigener Team-Node |
+
+Regeln (von `lint-tree.py` geprüft): `read_scope`/`write_scope` müssen existierende Nodes
+referenzieren; ein Agent darf nicht in einen Node schreiben, dessen Default-Sichtbarkeit über
+seiner `clearance` liegt (er könnte die Seite nicht zurücklesen); Low-Trust-Agenten
+(`clearance ≤ customer`) sollten in einen `session`-Sandbox schreiben statt in einen
+persistenten Node (Promotion → T4). **Durchsetzung** des Filters erfolgt im Retrieval-Layer (T3).
+
 ---
 
 ## Wikilink-Konvention
