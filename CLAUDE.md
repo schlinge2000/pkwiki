@@ -146,7 +146,8 @@ uv run code-watch.py --loop     # Daemon-Modus (nur für Debugging)
 | `scan-raw.py` | Generischer File-Watcher (Polling-Wrapper für Projekte ohne eigenen Watcher) |
 | `rebuild-index.py` | Regeneriert `wiki/index.md` aus YAML-Frontmatter |
 | `rebuild-code-wiki-index.py` | Patcht Obsidian-Wikilinks in `wiki/code-wiki/` (Ticket-↔-Modul-Verlinkung) |
-| `lint-links.py` | Graceful Link-Checker: löst `[[wikilinks]]` + bundle-relative Links auf, meldet Broken Links & Waisen |
+| `lint-links.py` | Graceful Link-Checker: löst `[[wikilinks]]` + bundle-relative Links auf, meldet Broken Links & Waisen; prüft `visibility` |
+| `lint-tree.py` | Konsistenz-Check der Node-Rechte in `vault-tree.yaml` (read/write-Zonen vs. Hierarchie) |
 | `test-connection.py` | Smoke-Test der Azure-OpenAI- und GitHub-Verbindung |
 
 ---
@@ -350,6 +351,24 @@ Jede kuratierte Seite (`concepts/`, `entities/`, `sources/`, `syntheses/`) träg
   sie erben die Sichtbarkeit ihres Nodes (siehe T5). `lint-links.py` prüft sie daher nicht.
 - Prüfung: `uv run lint-links.py` meldet ungültige Werte und (mit
   `--show-missing-visibility`) Seiten ohne Feld.
+
+### Node-Rechte (`vault-tree.yaml`)
+
+Der Wissensbaum (`company → team → personal`) trägt pro Node ein `rights`-Block, das die
+Read-/Write-Zonen explizit macht (vorher implizit über SharePoint/OneDrive-ACL):
+
+```yaml
+rights:
+  clearance: internal           # höchste (restriktivste) Stufe, die der Node LESEN darf
+  default_visibility: internal  # Default-visibility für hier erzeugte Seiten (<= clearance)
+  read:  [self, <vorfahren>]    # nur nach oben lesen — keine seitlichen Leaks
+  write: [self, <nachfahren>]   # nach oben schreiben = Promotion (Review-Gate, T4)
+```
+
+- **Read nur nach oben:** ein Node liest sich selbst + Vorfahren, nie Geschwister-/Fremd-Nodes.
+- **Write nur nach unten:** Hochstufen in einen Eltern-Layer ist Promotion (T4), kein Default.
+- **`clearance` nimmt nach unten nicht ab** — sonst könnte ein Kind den Eltern-Layer nicht lesen.
+- Prüfung: `uv run lint-tree.py [--strict]` validiert diese Regeln gegen die Hierarchie.
 
 ---
 
