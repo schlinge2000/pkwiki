@@ -23,6 +23,14 @@
       "interval_minutes": 15,
       "timeout_minutes": 60,
       "description": "Pollt konfigurierte GitHub-Repos auf neue Commits und triggert die Code-Wiki-Pipeline."
+    },
+    {
+      "name": "WikiClippings",
+      "script": "clippings-ingest.py",
+      "args": [],
+      "interval_minutes": 15,
+      "timeout_minutes": 30,
+      "description": "Scannt den Obsidian-Web-Clipper-Ordner Clippings/ und ingestet neue/geänderte Web-Clips (.md) wie raw/links-Quellen."
     }
   ]
 }

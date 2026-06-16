@@ -7,16 +7,19 @@ anpasst, muss hier nachsehen — und das Dokument bei Änderungen aktualisieren.
 
 ## Übersicht
 
-In pkwiki gibt es **drei** Ingest-Pipelines mit unterschiedlichen Triggern:
+In pkwiki gibt es **vier** Ingest-Pipelines mit unterschiedlichen Triggern:
 
 | Pipeline | Eingangsformat | Drop-Ordner | Wer triggert |
 |---|---|---|---|
 | `ingest.py` (regulär) | .pdf / .pptx / .docx / .txt | `raw/pdfs/`, `raw/slides/`, `raw/docs/`, `raw/links/` | `watch.ps1` (lokaler PowerShell-Watcher in pkwiki) |
 | `manual-ingest.py` | .pdf | `raw/manuals/` | `code-watch.py` (knowledge-tree) |
 | `transcript-ingest.py` | .docx | `raw/transcripts/` | `code-watch.py` (knowledge-tree) |
+| `clippings-ingest.py` | .md | `Clippings/` (Vault-Root, **nicht** unter `raw/`) | lokaler Scheduled Task `WikiClippings` (`watchers.json`) |
 
 `raw/manuals/` und `raw/transcripts/` werden von `watch.ps1` **bewusst ignoriert**
-— sie sind extern getriggert.
+— sie sind extern getriggert. Der `Clippings/`-Ordner liegt außerhalb von `raw/`
+und wird daher von `watch.ps1` ebenfalls nicht gesehen; ihn deckt der lokale
+Scheduled Task `WikiClippings` ab (kein externer Watcher nötig).
 
 ## Trigger-Bedingung (für externe Watcher)
 
