@@ -146,6 +146,7 @@ uv run code-watch.py --loop     # Daemon-Modus (nur für Debugging)
 | `scan-raw.py` | Generischer File-Watcher (Polling-Wrapper für Projekte ohne eigenen Watcher) |
 | `rebuild-index.py` | Regeneriert `wiki/index.md` aus YAML-Frontmatter |
 | `rebuild-code-wiki-index.py` | Patcht Obsidian-Wikilinks in `wiki/code-wiki/` (Ticket-↔-Modul-Verlinkung) |
+| `lint-links.py` | Graceful Link-Checker: löst `[[wikilinks]]` + bundle-relative Links auf, meldet Broken Links & Waisen |
 | `test-connection.py` | Smoke-Test der Azure-OpenAI- und GitHub-Verbindung |
 
 ---
@@ -328,6 +329,22 @@ keywords: [...]
 - Bilder einbetten: `![[dateiname.jpg]]` (Obsidian-Syntax)
 - Neue Konzepte ohne Seite: als `[[neues-konzept]]` verlinken, dann Seite anlegen
 
+### Portable Links (bundle-relativ) — optional
+`[[wikilinks]]` sind die Obsidian-native Default-Form und bleiben es. Wo ein Link
+**außerhalb von Obsidian** stabil bleiben muss (GitHub-Rendering, Archiv-Repo, fremde
+Tools), ist zusätzlich die **bundle-relative** Form erlaubt — angelehnt an das
+[Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf):
+ein Markdown-Link, dessen Pfad mit `/` ab dem `wiki/`-Root beginnt.
+
+```markdown
+[OpenAI](/entities/openai.md)        # bundle-relativ, ab wiki/ — portabel
+[[openai]]                            # Obsidian-Wikilink — Default
+```
+
+- `lint-links.py` löst **beide** Formen auf und prüft sie (siehe Operation: LINT).
+- Regel wie bei OKF: Links sind gerichtete Kanten; ein kaputtes Ziel ist **kein Fehler,
+  der etwas abbricht**, sondern ein Lint-Befund (Ziel ggf. noch anzulegen).
+
 ---
 
 ## Operation: INGEST
@@ -371,6 +388,12 @@ Wenn der Nutzer eine inhaltliche Frage stellt:
 
 Wenn der Nutzer "lint" oder "wiki aufräumen" sagt:
 
+Erst **deterministisch** vorprüfen, dann inhaltlich:
+```bash
+uv run lint-links.py            # Broken Links (beide Formen) + Waisen
+uv run lint-links.py --strict   # Exit 1 bei Broken Links (für CI/Watcher)
+```
+
 Prüfe die Wiki auf:
 - **Widersprüche:** Seiten die widersprüchliche Aussagen machen → markieren mit `> ⚠️ Widerspruch zu [[andere-seite]]`
 - **Waisen:** Seiten ohne eingehende Links → verlinken oder in index.md aufnehmen
@@ -402,6 +425,10 @@ Report als strukturierte Liste, dann Fixes durchführen.
 - **Immer** `index.md` aktualisieren wenn neue Seiten in concepts/entities/sources/syntheses angelegt werden
 - Bestehende Seiten erweitern statt Duplikate anlegen
 - Bei Unsicherheit über Kategorisierung: `domain: cross` verwenden
+- **Graceful degradation** (OKF-Prinzip „tolerate, don't reject"): Pipeline-Skripte, die über
+  viele Seiten iterieren, dürfen an einer fehlerhaften Einzelseite **nie den ganzen Lauf
+  abbrechen** — Seite überspringen, Warnung loggen, weitermachen. Unbekannte Frontmatter-Felder,
+  unbekannte `type`-Werte und kaputte Links werden toleriert, nicht verworfen.
 
 ---
 
