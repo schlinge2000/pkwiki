@@ -149,6 +149,7 @@ uv run code-watch.py --loop     # Daemon-Modus (nur für Debugging)
 | `lint-links.py` | Graceful Link-Checker: löst `[[wikilinks]]` + bundle-relative Links auf, meldet Broken Links & Waisen; prüft `visibility` |
 | `lint-tree.py` | Konsistenz-Check der Node-Rechte in `vault-tree.yaml` (read/write-Zonen vs. Hierarchie) |
 | `access.py` | Retrieval-Filter-Bibliothek: `can_read`/`filter_readable` (visibility-Durchsetzung, fail closed) — *single source of truth* der visibility-Leiter |
+| `promote.py` | Promotion-Planner: validiert Hochstufen einer Seite in einen Vorfahr-Node (Review-Gate, kein Auto-Move) |
 | `test-connection.py` | Smoke-Test der Azure-OpenAI- und GitHub-Verbindung |
 
 ---
@@ -418,6 +419,30 @@ visible = filter_readable(candidate_pages, agent)   # Gate vor dem Kontextfenste
   ungültige Agenten-`clearance` → `public` (geringster Zugriff). Unbekanntes leakt nie.
 - Tests: `uv run --no-project python -m unittest test_access` (Fokus: kein Leakage).
 - Reiner Stdlib-Code → von jedem Retrieval-Layer (Produkt-Agent, MCP-Server) importierbar.
+
+### Agenten-Gedächtnis & Promotion
+
+Das Wiki kann **Langzeitgedächtnis eines Agenten** sein. Dafür gilt:
+
+**Schreibzonen** (aus dem `write_scope` des Agentenprofils, T2):
+- **`session`** — ephemerer Sandbox-Node, kein Persist im Baum. Default für Low-Trust-/
+  Produkt-Agenten: externer Input vergiftet so nie das persistente Gedächtnis.
+- **persistenter Node** (z.B. eigener `personal`-/`team`-Node) — nur für vertrauenswürdige
+  interne Agenten. Ein Agent schreibt **ausschließlich** in seinen `write_scope` (`access.can_write`).
+
+**Memory-Schichten** (mappen auf bestehende Seitentypen):
+- **episodisch** → `log.md` (append-only): was wann passiert ist.
+- **semantisch** → `concepts/` + `entities/`: verdichtetes, vernetztes Wissen (Graph).
+- **prozedural/Quellen** → `sources/`: woher eine Erkenntnis stammt (Provenienz).
+
+**Promotion** (Hochstufen in einen breiteren Layer):
+- Wissen entsteht im engen Node (`session`/`personal`) und wird erst nach **Review** in
+  `team` → `company` gehoben — Promotion verbreitert die Sichtbarkeit und ist nie automatisch.
+- Regeln: Ziel-Node muss **Vorfahr** sein (nur nach oben); Ziel-Sichtbarkeit =
+  `default_visibility` des Ziel-Nodes und muss das Publikum verbreitern.
+- `uv run promote.py --from <node> --to <node> --visibility <stufe>` **plant und validiert**
+  die Promotion (permissibel? resultierende Sichtbarkeit?), führt sie aber nicht aus — der
+  Move + Review-Vermerk in `log.md` bleibt ein bewusster manueller Schritt (T4-Gate).
 
 ---
 
