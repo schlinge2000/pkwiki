@@ -48,8 +48,19 @@ VAULT_ROOT = Path(os.environ.get("VAULT_ROOT", str(SCRIPT_ROOT)))
 # Reservierte Dateinamen (OKF) + generierte Indizes — nie als Waise melden.
 RESERVED = {"index.md", "log.md", "picture_index.md", "changelog.md", "image-index.md"}
 
+# Sichtbarkeits-Schichten, von offen (links) nach restriktiv (rechts).
+# Default für Seiten OHNE Feld = restriktivste Stufe (safe by default).
+VISIBILITY_LEVELS = ["public", "customer", "internal", "team", "personal"]
+DEFAULT_VISIBILITY = VISIBILITY_LEVELS[-1]
+
+# Seitentypen, für die eine visibility-Klassifizierung erwartet wird.
+# code-wiki/ und manuals/ erben Node-Sichtbarkeit (T5) → hier nicht geprüft.
+VISIBILITY_SCOPE = ("concepts", "entities", "sources", "syntheses")
+
 WIKILINK_RE = re.compile(r"!?\[\[([^\]]+?)\]\]")
 MDLINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
+VISIBILITY_RE = re.compile(r"^visibility:\s*(.+)$", re.MULTILINE)
 
 
 def is_external(target: str) -> bool:
@@ -117,6 +128,17 @@ def resolve(target: str, src: Path, wiki_dir: Path,
     return hits[0] if hits else None
 
 
+def read_visibility(text: str) -> str | None:
+    """visibility aus dem Frontmatter lesen. None = Feld fehlt (→ Default gilt)."""
+    fm = FRONTMATTER_RE.search(text)
+    if not fm:
+        return None
+    vm = VISIBILITY_RE.search(fm.group(1))
+    if not vm:
+        return None
+    return vm.group(1).strip().strip('"').strip("'").lower()
+
+
 def extract_targets(text: str) -> list[str]:
     """Alle internen Link-Ziele einer Seite (Wikilinks + Markdown-Links)."""
     targets = [normalize_wikilink(m) for m in WIKILINK_RE.findall(text)]
@@ -127,8 +149,11 @@ def extract_targets(text: str) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Graceful Link-Checker für die Wiki (OKF)")
     parser.add_argument("--wiki-dir", help="Wiki-Verzeichnis (Default: $VAULT_ROOT/wiki)")
-    parser.add_argument("--strict", action="store_true", help="Exit 1 bei Broken Links")
+    parser.add_argument("--strict", action="store_true",
+                        help="Exit 1 bei Broken Links oder ungültiger visibility")
     parser.add_argument("--no-orphans", action="store_true", help="Waisen-Analyse überspringen")
+    parser.add_argument("--show-missing-visibility", action="store_true",
+                        help="Seiten ohne visibility-Feld einzeln auflisten")
     args = parser.parse_args()
 
     wiki_dir = Path(args.wiki_dir) if args.wiki_dir else VAULT_ROOT / "wiki"
@@ -140,23 +165,33 @@ def main() -> int:
 
     broken: list[tuple[str, str]] = []          # (quelle, ziel)
     incoming: set[Path] = set()                 # Seiten mit eingehendem Link
+    invalid_vis: list[tuple[str, str]] = []     # (quelle, ungültiger wert)
+    missing_vis: list[str] = []                 # quelle ohne visibility-Feld
     skipped = 0
 
     for page in md_pages:
+        rel = page.relative_to(wiki_dir)
         try:
             text = page.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             skipped += 1
-            print(f"  ! SKIP {page.relative_to(wiki_dir).as_posix()} — "
-                  f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            print(f"  ! SKIP {rel.as_posix()} — {type(exc).__name__}: {exc}", file=sys.stderr)
             continue
 
         for target in extract_targets(text):
             dest = resolve(target, page, wiki_dir, rel_index, stem_index)
             if dest is None:
-                broken.append((page.relative_to(wiki_dir).as_posix(), target))
+                broken.append((rel.as_posix(), target))
             elif dest != page:
                 incoming.add(dest.resolve())
+
+        # visibility nur für kuratierte Seitentypen prüfen
+        if rel.parts and rel.parts[0] in VISIBILITY_SCOPE:
+            vis = read_visibility(text)
+            if vis is None:
+                missing_vis.append(rel.as_posix())
+            elif vis not in VISIBILITY_LEVELS:
+                invalid_vis.append((rel.as_posix(), vis))
 
     # --- Report -----------------------------------------------------------
     print(f"Wiki: {wiki_dir}  ({len(md_pages)} Seiten, {skipped} übersprungen)\n")
@@ -179,7 +214,22 @@ def main() -> int:
         if not orphans:
             print("  (keine)")
 
-    return 1 if (args.strict and broken) else 0
+    print(f"\n## visibility — ungültige Werte ({len(invalid_vis)})")
+    for src, val in invalid_vis:
+        print(f"  ✗ {src} → '{val}'  (erlaubt: {', '.join(VISIBILITY_LEVELS)})")
+    if not invalid_vis:
+        print("  (keine)")
+
+    print(f"\n## visibility — fehlt, Default '{DEFAULT_VISIBILITY}' ({len(missing_vis)})")
+    if missing_vis and args.show_missing_visibility:
+        for src in sorted(missing_vis):
+            print(f"  ○ {src}")
+    elif missing_vis:
+        print(f"  ({len(missing_vis)} Seiten — mit --show-missing-visibility auflisten)")
+    else:
+        print("  (keine)")
+
+    return 1 if (args.strict and (broken or invalid_vis)) else 0
 
 
 if __name__ == "__main__":

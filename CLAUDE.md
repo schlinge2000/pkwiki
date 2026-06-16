@@ -234,6 +234,7 @@ domain: ai | business | tech | cross
 sources: [raw/pdfs/paper1.pdf, raw/slides/vortrag2.pptx]
 related: ["[[anderes-konzept]]", "[[entity-name]]"]
 confidence: high | medium | low
+visibility: public | customer | internal | team | personal
 last_updated: YYYY-MM-DD
 ---
 ```
@@ -246,6 +247,7 @@ type: entity
 entity_type: person | company | product | organization
 sources: [raw/...]
 related: ["[[konzept]]"]
+visibility: public | customer | internal | team | personal
 last_updated: YYYY-MM-DD
 ---
 ```
@@ -259,6 +261,7 @@ source_file: raw/pdfs/dateiname.pdf
 source_type: paper | slide | doc | article | talk | transcript
 date: YYYY-MM-DD
 key_concepts: ["[[konzept-1]]", "[[konzept-2]]"]
+visibility: public | customer | internal | team | personal
 last_updated: YYYY-MM-DD
 ---
 ```
@@ -271,6 +274,7 @@ type: synthesis
 domain: ai | business | tech | cross
 sources: ["[[source-1]]", "[[source-2]]"]
 related: ["[[konzept]]"]
+visibility: public | customer | internal | team | personal
 last_updated: YYYY-MM-DD
 ---
 ```
@@ -319,6 +323,33 @@ keywords: [...]
 - Kapitel-Seiten mit Schritt-für-Schritt-Anleitungen, UI-Elementen fett
 - Bilder inline eingebettet: `![[dateiname.jpg]]`
 - Suche über Keywords, Querverweise auf andere Kapitel als `[[kapitel-slug]]`
+
+---
+
+## Sichtbarkeit & Wissensschichten
+
+Jede kuratierte Seite (`concepts/`, `entities/`, `sources/`, `syntheses/`) trägt ein
+`visibility:`-Feld, das die **Wissensschicht** klassifiziert — von offen nach restriktiv:
+
+| Stufe | Wer darf lesen |
+|-------|----------------|
+| `public`   | extern sichtbar, keine Einschränkung |
+| `customer` | Kunden / externe Software-User eines Produkts |
+| `internal` | alle Firmenmitarbeiter |
+| `team`     | nur das jeweilige Team (Node) |
+| `personal` | nur der Eigentümer-Node |
+
+- **Default (Feld fehlt) = `personal`** — *safe by default*: lieber zu restriktiv als
+  versehentlich geleakt. Ein fehlendes Feld ist kein Fehler, nur ein Lint-Hinweis.
+- **OKF-kompatibel:** `visibility` ist ein Custom-Key; Consumer, die es nicht kennen,
+  dürfen die Seite nicht verwerfen (graceful degradation).
+- Die Stufe ist eine **Klassifizierung, keine Sicherheitsgrenze** — die Durchsetzung
+  („`visibility ≤ clearance`" vor der Kontextbefüllung) gehört in den Retrieval-Layer
+  (siehe Epic #28, T3), nicht in die Markdown-Datei.
+- **Auto-generierte Bundles** (`code-wiki/`, `manuals/`) tragen *kein* Feld pro Seite —
+  sie erben die Sichtbarkeit ihres Nodes (siehe T5). `lint-links.py` prüft sie daher nicht.
+- Prüfung: `uv run lint-links.py` meldet ungültige Werte und (mit
+  `--show-missing-visibility`) Seiten ohne Feld.
 
 ---
 
@@ -390,8 +421,9 @@ Wenn der Nutzer "lint" oder "wiki aufräumen" sagt:
 
 Erst **deterministisch** vorprüfen, dann inhaltlich:
 ```bash
-uv run lint-links.py            # Broken Links (beide Formen) + Waisen
-uv run lint-links.py --strict   # Exit 1 bei Broken Links (für CI/Watcher)
+uv run lint-links.py                          # Broken Links + Waisen + ungültige visibility
+uv run lint-links.py --show-missing-visibility # zusätzlich: Seiten ohne visibility-Feld
+uv run lint-links.py --strict                 # Exit 1 bei Broken Links / ungültiger visibility
 ```
 
 Prüfe die Wiki auf:
