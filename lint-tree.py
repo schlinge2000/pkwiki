@@ -36,16 +36,10 @@ try:
 except ImportError:
     pass
 
+from access import VISIBILITY_LEVELS, rank  # Single source of truth (T3)
+
 SCRIPT_ROOT = Path(__file__).parent
 VAULT_ROOT = Path(os.environ.get("VAULT_ROOT", str(SCRIPT_ROOT)))
-
-# Sichtbarkeits-Schichten, von offen (Index 0) nach restriktiv. Muss zu lint-links.py passen.
-VISIBILITY_LEVELS = ["public", "customer", "internal", "team", "personal"]
-
-
-def rank(level: str) -> int:
-    """Sensitivitäts-Rang einer visibility-Stufe (höher = restriktiver)."""
-    return VISIBILITY_LEVELS.index(level)
 
 
 def load_tree(path: Path) -> dict:

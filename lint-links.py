@@ -45,13 +45,10 @@ except ImportError:
 SCRIPT_ROOT = Path(__file__).parent
 VAULT_ROOT = Path(os.environ.get("VAULT_ROOT", str(SCRIPT_ROOT)))
 
+from access import DEFAULT_VISIBILITY, VISIBILITY_LEVELS  # Single source of truth (T3)
+
 # Reservierte Dateinamen (OKF) + generierte Indizes — nie als Waise melden.
 RESERVED = {"index.md", "log.md", "picture_index.md", "changelog.md", "image-index.md"}
-
-# Sichtbarkeits-Schichten, von offen (links) nach restriktiv (rechts).
-# Default für Seiten OHNE Feld = restriktivste Stufe (safe by default).
-VISIBILITY_LEVELS = ["public", "customer", "internal", "team", "personal"]
-DEFAULT_VISIBILITY = VISIBILITY_LEVELS[-1]
 
 # Seitentypen, für die eine visibility-Klassifizierung erwartet wird.
 # code-wiki/ und manuals/ erben Node-Sichtbarkeit (T5) → hier nicht geprüft.

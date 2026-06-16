@@ -148,6 +148,7 @@ uv run code-watch.py --loop     # Daemon-Modus (nur für Debugging)
 | `rebuild-code-wiki-index.py` | Patcht Obsidian-Wikilinks in `wiki/code-wiki/` (Ticket-↔-Modul-Verlinkung) |
 | `lint-links.py` | Graceful Link-Checker: löst `[[wikilinks]]` + bundle-relative Links auf, meldet Broken Links & Waisen; prüft `visibility` |
 | `lint-tree.py` | Konsistenz-Check der Node-Rechte in `vault-tree.yaml` (read/write-Zonen vs. Hierarchie) |
+| `access.py` | Retrieval-Filter-Bibliothek: `can_read`/`filter_readable` (visibility-Durchsetzung, fail closed) — *single source of truth* der visibility-Leiter |
 | `test-connection.py` | Smoke-Test der Azure-OpenAI- und GitHub-Verbindung |
 
 ---
@@ -396,7 +397,27 @@ Regeln (von `lint-tree.py` geprüft): `read_scope`/`write_scope` müssen existie
 referenzieren; ein Agent darf nicht in einen Node schreiben, dessen Default-Sichtbarkeit über
 seiner `clearance` liegt (er könnte die Seite nicht zurücklesen); Low-Trust-Agenten
 (`clearance ≤ customer`) sollten in einen `session`-Sandbox schreiben statt in einen
-persistenten Node (Promotion → T4). **Durchsetzung** des Filters erfolgt im Retrieval-Layer (T3).
+persistenten Node (Promotion → T4).
+
+### Durchsetzung: Retrieval-Filter (`access.py`)
+
+Die Klassifizierung ist nur dann eine Grenze, wenn sie **vor** der Kontextbefüllung
+durchgesetzt wird. `access.py` ist die wiederverwendbare Bibliothek dafür (und die *single
+source of truth* der visibility-Leiter — `lint-links.py`/`lint-tree.py` importieren sie):
+
+```python
+from access import AgentProfile, Page, can_read, filter_readable
+
+agent = AgentProfile("prod", clearance="customer",
+                     read_scope=frozenset({"company"}), write_scope="session")
+visible = filter_readable(candidate_pages, agent)   # Gate vor dem Kontextfenster
+```
+
+- **Lesbar ⇔** `rank(visibility) ≤ rank(clearance)` **und** `node ∈ read_scope`.
+- **Fail closed:** fehlende/ungültige Seiten-`visibility` → `personal` (verbergen); fehlende/
+  ungültige Agenten-`clearance` → `public` (geringster Zugriff). Unbekanntes leakt nie.
+- Tests: `uv run --no-project python -m unittest test_access` (Fokus: kein Leakage).
+- Reiner Stdlib-Code → von jedem Retrieval-Layer (Produkt-Agent, MCP-Server) importierbar.
 
 ---
 
