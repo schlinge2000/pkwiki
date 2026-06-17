@@ -287,29 +287,45 @@ def process_repo(repo_dir: Path, dry_run: bool) -> None:
     log.info("=" * 60)
 
     changed = 0
+    skipped = 0
+
+    def safe(fn, path: Path) -> bool:
+        """Graceful per-page processing: eine fehlerhafte Seite bricht den Lauf nie ab."""
+        nonlocal skipped
+        try:
+            return fn(path, dry_run)
+        except Exception as exc:  # noqa: BLE001 — bewusst breit: OKF-Prinzip "tolerate, don't reject"
+            skipped += 1
+            log.warning("SKIP   %s — %s: %s", path.name, type(exc).__name__, exc)
+            return False
 
     # Ticket-Seiten patchen
     tickets_dir = repo_dir / "tickets"
     if tickets_dir.exists():
         for f in sorted(tickets_dir.glob("*.md")):
-            if patch_ticket_page(f, dry_run):
+            if safe(patch_ticket_page, f):
                 changed += 1
 
     # Modul-Seiten patchen
     modules_dir = repo_dir / "modules"
     if modules_dir.exists():
         for f in sorted(modules_dir.glob("**/*.md")):
-            if patch_module_page(f, dry_run):
+            if safe(patch_module_page, f):
                 changed += 1
 
     # Changelog patchen
-    if patch_changelog(repo_dir / "changelog.md", dry_run):
+    if safe(patch_changelog, repo_dir / "changelog.md"):
         changed += 1
 
     # Index generieren
     write_repo_index(repo_dir, repo_name, dry_run)
 
-    log.info("Fertig: %d Seiten gepatcht%s", changed, "  [dry-run]" if dry_run else "")
+    log.info(
+        "Fertig: %d Seiten gepatcht, %d übersprungen%s",
+        changed,
+        skipped,
+        "  [dry-run]" if dry_run else "",
+    )
 
 
 def main() -> None:

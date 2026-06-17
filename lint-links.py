@@ -1,0 +1,233 @@
+# /// script
+# dependencies = ["python-dotenv"]
+# ///
+"""
+lint-links.py — Graceful Link-Checker für die Wiki (OKF-Prinzip).
+
+Löst BEIDE internen Link-Formen auf und meldet Probleme, statt abzubrechen:
+  1. Obsidian-Wikilinks      [[seiten-slug]], [[slug|alias]], [[slug#heading]], ![[bild.jpg]]
+  2. Bundle-relative Links   [text](/concepts/foo.md)   — ab wiki/-Root, portable/stabile Form
+     + gewöhnliche relative  [text](../entities/bar.md)
+
+OKF-Konformität (siehe SPEC.md des knowledge-catalog/okf):
+  - Links sind gerichtete Kanten; kaputte Ziele werden TOLERIERT (Report, kein Crash).
+  - Eine fehlerhafte Einzelseite bricht den Lauf nie ab (graceful degradation).
+
+Report:
+  - Broken Links : [[..]]/(..) ohne existierendes Ziel
+  - Waisen       : Seiten ohne eingehende Links (außer index/log/picture_index)
+
+Usage:
+    uv run lint-links.py                 # Report über $VAULT_ROOT/wiki
+    uv run lint-links.py --wiki-dir PATH # abweichendes Wiki-Verzeichnis
+    uv run lint-links.py --strict        # Exit-Code 1 wenn Broken Links gefunden
+    uv run lint-links.py --no-orphans    # nur Broken Links prüfen
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    _vault = os.environ.get("VAULT_ROOT")
+    if _vault:
+        load_dotenv(Path(_vault) / ".env", override=False)
+    load_dotenv(Path(__file__).parent / ".env", override=False)
+except ImportError:
+    pass
+
+SCRIPT_ROOT = Path(__file__).parent
+VAULT_ROOT = Path(os.environ.get("VAULT_ROOT", str(SCRIPT_ROOT)))
+
+from access import DEFAULT_VISIBILITY, VISIBILITY_LEVELS  # Single source of truth (T3)
+
+# Reservierte Dateinamen (OKF) + generierte Indizes — nie als Waise melden.
+RESERVED = {"index.md", "log.md", "picture_index.md", "changelog.md", "image-index.md"}
+
+# Seitentypen, für die eine visibility-Klassifizierung erwartet wird.
+# code-wiki/ und manuals/ erben Node-Sichtbarkeit (T5) → hier nicht geprüft.
+VISIBILITY_SCOPE = ("concepts", "entities", "sources", "syntheses")
+
+WIKILINK_RE = re.compile(r"!?\[\[([^\]]+?)\]\]")
+MDLINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
+VISIBILITY_RE = re.compile(r"^visibility:\s*(.+)$", re.MULTILINE)
+
+
+def is_external(target: str) -> bool:
+    """http(s)://, mailto:, reine Anker (#...) etc. sind keine internen Seiten-Links."""
+    t = target.strip()
+    return (
+        not t
+        or t.startswith(("http://", "https://", "mailto:", "#"))
+        or "://" in t.split("/", 1)[0]
+    )
+
+
+def normalize_wikilink(raw: str) -> str:
+    """[[slug|alias]] / [[slug#heading]] / [[folder/slug]] → bloßes Ziel (vor | und #)."""
+    target = raw.split("|", 1)[0]
+    target = target.split("#", 1)[0]
+    return target.strip()
+
+
+def collect_pages(wiki_dir: Path) -> tuple[dict[str, Path], dict[str, list[Path]], list[Path]]:
+    """
+    Indiziert alle Dateien unter wiki/.
+      rel_index : bundle-relativer Pfad (mit/ohne .md, posix) → Path
+      stem_index: Dateiname-Stem → [Paths]  (Wikilink-Auflösung; Kollisionen möglich)
+      md_pages  : alle .md-Seiten (für Waisen-Analyse)
+    """
+    rel_index: dict[str, Path] = {}
+    stem_index: dict[str, list[Path]] = defaultdict(list)
+    md_pages: list[Path] = []
+
+    for f in sorted(wiki_dir.rglob("*")):
+        if not f.is_file() or ".git" in f.parts:
+            continue
+        rel = f.relative_to(wiki_dir).as_posix()
+        rel_index[rel] = f
+        if f.suffix == ".md":
+            rel_index[rel[: -len(".md")]] = f  # auch ohne Endung adressierbar
+            md_pages.append(f)
+        stem_index[f.stem].append(f)
+
+    return rel_index, stem_index, md_pages
+
+
+def resolve(target: str, src: Path, wiki_dir: Path,
+            rel_index: dict[str, Path], stem_index: dict[str, list[Path]]) -> Path | None:
+    """Löst ein Link-Ziel (Wikilink-Slug ODER Pfad) auf eine existierende Datei auf."""
+    t = target.strip()
+    if not t:
+        return None
+
+    # Bundle-relativ ("/concepts/foo.md") — ab wiki/-Root
+    if t.startswith("/"):
+        rel = t.lstrip("/")
+        return rel_index.get(rel) or rel_index.get(rel.removesuffix(".md"))
+
+    # Pfad-artig (enthält "/" oder ".md"-Endung) → relativ zur Quelldatei, dann bundle-relativ
+    if "/" in t or t.endswith(".md"):
+        cand = (src.parent / t).resolve()
+        if cand.is_file():
+            return cand
+        return rel_index.get(t) or rel_index.get(t.removesuffix(".md"))
+
+    # Reiner Wikilink-Slug → über Dateiname-Stem
+    hits = stem_index.get(t)
+    return hits[0] if hits else None
+
+
+def read_visibility(text: str) -> str | None:
+    """visibility aus dem Frontmatter lesen. None = Feld fehlt (→ Default gilt)."""
+    fm = FRONTMATTER_RE.search(text)
+    if not fm:
+        return None
+    vm = VISIBILITY_RE.search(fm.group(1))
+    if not vm:
+        return None
+    return vm.group(1).strip().strip('"').strip("'").lower()
+
+
+def extract_targets(text: str) -> list[str]:
+    """Alle internen Link-Ziele einer Seite (Wikilinks + Markdown-Links)."""
+    targets = [normalize_wikilink(m) for m in WIKILINK_RE.findall(text)]
+    targets += [m for m in MDLINK_RE.findall(text) if not is_external(m)]
+    return [t for t in targets if t]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Graceful Link-Checker für die Wiki (OKF)")
+    parser.add_argument("--wiki-dir", help="Wiki-Verzeichnis (Default: $VAULT_ROOT/wiki)")
+    parser.add_argument("--strict", action="store_true",
+                        help="Exit 1 bei Broken Links oder ungültiger visibility")
+    parser.add_argument("--no-orphans", action="store_true", help="Waisen-Analyse überspringen")
+    parser.add_argument("--show-missing-visibility", action="store_true",
+                        help="Seiten ohne visibility-Feld einzeln auflisten")
+    args = parser.parse_args()
+
+    wiki_dir = Path(args.wiki_dir) if args.wiki_dir else VAULT_ROOT / "wiki"
+    if not wiki_dir.is_dir():
+        print(f"ERROR: Wiki-Verzeichnis nicht gefunden: {wiki_dir}", file=sys.stderr)
+        return 2
+
+    rel_index, stem_index, md_pages = collect_pages(wiki_dir)
+
+    broken: list[tuple[str, str]] = []          # (quelle, ziel)
+    incoming: set[Path] = set()                 # Seiten mit eingehendem Link
+    invalid_vis: list[tuple[str, str]] = []     # (quelle, ungültiger wert)
+    missing_vis: list[str] = []                 # quelle ohne visibility-Feld
+    skipped = 0
+
+    for page in md_pages:
+        rel = page.relative_to(wiki_dir)
+        try:
+            text = page.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            skipped += 1
+            print(f"  ! SKIP {rel.as_posix()} — {type(exc).__name__}: {exc}", file=sys.stderr)
+            continue
+
+        for target in extract_targets(text):
+            dest = resolve(target, page, wiki_dir, rel_index, stem_index)
+            if dest is None:
+                broken.append((rel.as_posix(), target))
+            elif dest != page:
+                incoming.add(dest.resolve())
+
+        # visibility nur für kuratierte Seitentypen prüfen
+        if rel.parts and rel.parts[0] in VISIBILITY_SCOPE:
+            vis = read_visibility(text)
+            if vis is None:
+                missing_vis.append(rel.as_posix())
+            elif vis not in VISIBILITY_LEVELS:
+                invalid_vis.append((rel.as_posix(), vis))
+
+    # --- Report -----------------------------------------------------------
+    print(f"Wiki: {wiki_dir}  ({len(md_pages)} Seiten, {skipped} übersprungen)\n")
+
+    print(f"## Broken Links ({len(broken)})")
+    for src, target in broken:
+        print(f"  ✗ {src} → {target}")
+    if not broken:
+        print("  (keine)")
+
+    if not args.no_orphans:
+        orphans = [
+            p.relative_to(wiki_dir).as_posix()
+            for p in md_pages
+            if p.name not in RESERVED and p.resolve() not in incoming
+        ]
+        print(f"\n## Waisen — ohne eingehende Links ({len(orphans)})")
+        for o in sorted(orphans):
+            print(f"  ○ {o}")
+        if not orphans:
+            print("  (keine)")
+
+    print(f"\n## visibility — ungültige Werte ({len(invalid_vis)})")
+    for src, val in invalid_vis:
+        print(f"  ✗ {src} → '{val}'  (erlaubt: {', '.join(VISIBILITY_LEVELS)})")
+    if not invalid_vis:
+        print("  (keine)")
+
+    print(f"\n## visibility — fehlt, Default '{DEFAULT_VISIBILITY}' ({len(missing_vis)})")
+    if missing_vis and args.show_missing_visibility:
+        for src in sorted(missing_vis):
+            print(f"  ○ {src}")
+    elif missing_vis:
+        print(f"  ({len(missing_vis)} Seiten — mit --show-missing-visibility auflisten)")
+    else:
+        print("  (keine)")
+
+    return 1 if (args.strict and (broken or invalid_vis)) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

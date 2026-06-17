@@ -146,6 +146,10 @@ uv run code-watch.py --loop     # Daemon-Modus (nur für Debugging)
 | `scan-raw.py` | Generischer File-Watcher (Polling-Wrapper für Projekte ohne eigenen Watcher) |
 | `rebuild-index.py` | Regeneriert `wiki/index.md` aus YAML-Frontmatter |
 | `rebuild-code-wiki-index.py` | Patcht Obsidian-Wikilinks in `wiki/code-wiki/` (Ticket-↔-Modul-Verlinkung) |
+| `lint-links.py` | Graceful Link-Checker: löst `[[wikilinks]]` + bundle-relative Links auf, meldet Broken Links & Waisen; prüft `visibility` |
+| `lint-tree.py` | Konsistenz-Check der Node-Rechte in `vault-tree.yaml` (read/write-Zonen vs. Hierarchie) |
+| `access.py` | Retrieval-Filter-Bibliothek: `can_read`/`filter_readable` (visibility-Durchsetzung, fail closed) — *single source of truth* der visibility-Leiter |
+| `promote.py` | Promotion-Planner: validiert Hochstufen einer Seite in einen Vorfahr-Node (Review-Gate, kein Auto-Move) |
 | `test-connection.py` | Smoke-Test der Azure-OpenAI- und GitHub-Verbindung |
 
 ---
@@ -233,6 +237,7 @@ domain: ai | business | tech | cross
 sources: [raw/pdfs/paper1.pdf, raw/slides/vortrag2.pptx]
 related: ["[[anderes-konzept]]", "[[entity-name]]"]
 confidence: high | medium | low
+visibility: public | customer | internal | team | personal
 last_updated: YYYY-MM-DD
 ---
 ```
@@ -245,6 +250,7 @@ type: entity
 entity_type: person | company | product | organization
 sources: [raw/...]
 related: ["[[konzept]]"]
+visibility: public | customer | internal | team | personal
 last_updated: YYYY-MM-DD
 ---
 ```
@@ -258,6 +264,7 @@ source_file: raw/pdfs/dateiname.pdf
 source_type: paper | slide | doc | article | talk | transcript
 date: YYYY-MM-DD
 key_concepts: ["[[konzept-1]]", "[[konzept-2]]"]
+visibility: public | customer | internal | team | personal
 last_updated: YYYY-MM-DD
 ---
 ```
@@ -270,6 +277,7 @@ type: synthesis
 domain: ai | business | tech | cross
 sources: ["[[source-1]]", "[[source-2]]"]
 related: ["[[konzept]]"]
+visibility: public | customer | internal | team | personal
 last_updated: YYYY-MM-DD
 ---
 ```
@@ -321,12 +329,145 @@ keywords: [...]
 
 ---
 
+## Sichtbarkeit & Wissensschichten
+
+Jede kuratierte Seite (`concepts/`, `entities/`, `sources/`, `syntheses/`) trägt ein
+`visibility:`-Feld, das die **Wissensschicht** klassifiziert — von offen nach restriktiv:
+
+| Stufe | Wer darf lesen |
+|-------|----------------|
+| `public`   | extern sichtbar, keine Einschränkung |
+| `customer` | Kunden / externe Software-User eines Produkts |
+| `internal` | alle Firmenmitarbeiter |
+| `team`     | nur das jeweilige Team (Node) |
+| `personal` | nur der Eigentümer-Node |
+
+- **Default (Feld fehlt) = `personal`** — *safe by default*: lieber zu restriktiv als
+  versehentlich geleakt. Ein fehlendes Feld ist kein Fehler, nur ein Lint-Hinweis.
+- **OKF-kompatibel:** `visibility` ist ein Custom-Key; Consumer, die es nicht kennen,
+  dürfen die Seite nicht verwerfen (graceful degradation).
+- Die Stufe ist eine **Klassifizierung, keine Sicherheitsgrenze** — die Durchsetzung
+  („`visibility ≤ clearance`" vor der Kontextbefüllung) gehört in den Retrieval-Layer
+  (siehe Epic #28, T3), nicht in die Markdown-Datei.
+- **Auto-generierte Bundles** (`code-wiki/`, `manuals/`) tragen *kein* Feld pro Seite —
+  sie erben die Sichtbarkeit ihres Nodes (siehe T5). `lint-links.py` prüft sie daher nicht.
+- Prüfung: `uv run lint-links.py` meldet ungültige Werte und (mit
+  `--show-missing-visibility`) Seiten ohne Feld.
+
+### Node-Rechte (`vault-tree.yaml`)
+
+Der Wissensbaum (`company → team → personal`) trägt pro Node ein `rights`-Block, das die
+Read-/Write-Zonen explizit macht (vorher implizit über SharePoint/OneDrive-ACL):
+
+```yaml
+rights:
+  clearance: internal           # höchste (restriktivste) Stufe, die der Node LESEN darf
+  default_visibility: internal  # Default-visibility für hier erzeugte Seiten (<= clearance)
+  read:  [self, <vorfahren>]    # nur nach oben lesen — keine seitlichen Leaks
+  write: [self, <nachfahren>]   # nach oben schreiben = Promotion (Review-Gate, T4)
+```
+
+- **Read nur nach oben:** ein Node liest sich selbst + Vorfahren, nie Geschwister-/Fremd-Nodes.
+- **Write nur nach unten:** Hochstufen in einen Eltern-Layer ist Promotion (T4), kein Default.
+- **`clearance` nimmt nach unten nicht ab** — sonst könnte ein Kind den Eltern-Layer nicht lesen.
+- Prüfung: `uv run lint-tree.py [--strict]` validiert diese Regeln gegen die Hierarchie.
+
+### Agenten-Capabilities (`vault-tree.yaml` › `agents:`)
+
+Ein Agent erhält ein Capability-Profil, das `clearance` (Lese-Obergrenze) mit Read-/Write-Scope
+verbindet. **Effektiver Lesezugriff** auf eine Seite:
+
+> `rank(visibility) <= rank(clearance)`  **und**  `node(seite) ∈ read_scope`
+
+```yaml
+agents:
+  - id: <slug>
+    clearance: <stufe>          # höchste visibility, die der Agent lesen darf
+    read_scope:  [<node>, ...]  # Nodes, deren Inhalt sichtbar ist
+    write_scope: <node> | session   # 'session' = ephemerer Sandbox-Node (kein Persist)
+```
+
+Zwei Referenz-Profile (in `vault-tree.yaml.example`):
+
+| Profil | clearance | read_scope | write_scope |
+|--------|-----------|------------|-------------|
+| **Produkt-Agent** (externe Software-User) | `customer` | freigegebene Nodes (z.B. `company`) | `session` (Sandbox) |
+| **Interner Team-Copilot** | `team` | eigener Team-Node + `company` | eigener Team-Node |
+
+Regeln (von `lint-tree.py` geprüft): `read_scope`/`write_scope` müssen existierende Nodes
+referenzieren; ein Agent darf nicht in einen Node schreiben, dessen Default-Sichtbarkeit über
+seiner `clearance` liegt (er könnte die Seite nicht zurücklesen); Low-Trust-Agenten
+(`clearance ≤ customer`) sollten in einen `session`-Sandbox schreiben statt in einen
+persistenten Node (Promotion → T4).
+
+### Durchsetzung: Retrieval-Filter (`access.py`)
+
+Die Klassifizierung ist nur dann eine Grenze, wenn sie **vor** der Kontextbefüllung
+durchgesetzt wird. `access.py` ist die wiederverwendbare Bibliothek dafür (und die *single
+source of truth* der visibility-Leiter — `lint-links.py`/`lint-tree.py` importieren sie):
+
+```python
+from access import AgentProfile, Page, can_read, filter_readable
+
+agent = AgentProfile("prod", clearance="customer",
+                     read_scope=frozenset({"company"}), write_scope="session")
+visible = filter_readable(candidate_pages, agent)   # Gate vor dem Kontextfenster
+```
+
+- **Lesbar ⇔** `rank(visibility) ≤ rank(clearance)` **und** `node ∈ read_scope`.
+- **Fail closed:** fehlende/ungültige Seiten-`visibility` → `personal` (verbergen); fehlende/
+  ungültige Agenten-`clearance` → `public` (geringster Zugriff). Unbekanntes leakt nie.
+- Tests: `uv run --no-project python -m unittest test_access` (Fokus: kein Leakage).
+- Reiner Stdlib-Code → von jedem Retrieval-Layer (Produkt-Agent, MCP-Server) importierbar.
+
+### Agenten-Gedächtnis & Promotion
+
+Das Wiki kann **Langzeitgedächtnis eines Agenten** sein. Dafür gilt:
+
+**Schreibzonen** (aus dem `write_scope` des Agentenprofils, T2):
+- **`session`** — ephemerer Sandbox-Node, kein Persist im Baum. Default für Low-Trust-/
+  Produkt-Agenten: externer Input vergiftet so nie das persistente Gedächtnis.
+- **persistenter Node** (z.B. eigener `personal`-/`team`-Node) — nur für vertrauenswürdige
+  interne Agenten. Ein Agent schreibt **ausschließlich** in seinen `write_scope` (`access.can_write`).
+
+**Memory-Schichten** (mappen auf bestehende Seitentypen):
+- **episodisch** → `log.md` (append-only): was wann passiert ist.
+- **semantisch** → `concepts/` + `entities/`: verdichtetes, vernetztes Wissen (Graph).
+- **prozedural/Quellen** → `sources/`: woher eine Erkenntnis stammt (Provenienz).
+
+**Promotion** (Hochstufen in einen breiteren Layer):
+- Wissen entsteht im engen Node (`session`/`personal`) und wird erst nach **Review** in
+  `team` → `company` gehoben — Promotion verbreitert die Sichtbarkeit und ist nie automatisch.
+- Regeln: Ziel-Node muss **Vorfahr** sein (nur nach oben); Ziel-Sichtbarkeit =
+  `default_visibility` des Ziel-Nodes und muss das Publikum verbreitern.
+- `uv run promote.py --from <node> --to <node> --visibility <stufe>` **plant und validiert**
+  die Promotion (permissibel? resultierende Sichtbarkeit?), führt sie aber nicht aus — der
+  Move + Review-Vermerk in `log.md` bleibt ein bewusster manueller Schritt (T4-Gate).
+
+---
+
 ## Wikilink-Konvention
 - Interne Links immer als `[[seiten-name]]` (Dateiname ohne .md, kebab-case)
 - Code-Wiki: `[[modul-slug]]` für Module, `[[661]]` für Tickets (DAI-661)
 - Handbücher: `[[kapitel-slug]]` für Kapitelverweise innerhalb eines Produkts
 - Bilder einbetten: `![[dateiname.jpg]]` (Obsidian-Syntax)
 - Neue Konzepte ohne Seite: als `[[neues-konzept]]` verlinken, dann Seite anlegen
+
+### Portable Links (bundle-relativ) — optional
+`[[wikilinks]]` sind die Obsidian-native Default-Form und bleiben es. Wo ein Link
+**außerhalb von Obsidian** stabil bleiben muss (GitHub-Rendering, Archiv-Repo, fremde
+Tools), ist zusätzlich die **bundle-relative** Form erlaubt — angelehnt an das
+[Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf):
+ein Markdown-Link, dessen Pfad mit `/` ab dem `wiki/`-Root beginnt.
+
+```markdown
+[OpenAI](/entities/openai.md)        # bundle-relativ, ab wiki/ — portabel
+[[openai]]                            # Obsidian-Wikilink — Default
+```
+
+- `lint-links.py` löst **beide** Formen auf und prüft sie (siehe Operation: LINT).
+- Regel wie bei OKF: Links sind gerichtete Kanten; ein kaputtes Ziel ist **kein Fehler,
+  der etwas abbricht**, sondern ein Lint-Befund (Ziel ggf. noch anzulegen).
 
 ---
 
@@ -371,6 +512,13 @@ Wenn der Nutzer eine inhaltliche Frage stellt:
 
 Wenn der Nutzer "lint" oder "wiki aufräumen" sagt:
 
+Erst **deterministisch** vorprüfen, dann inhaltlich:
+```bash
+uv run lint-links.py                          # Broken Links + Waisen + ungültige visibility
+uv run lint-links.py --show-missing-visibility # zusätzlich: Seiten ohne visibility-Feld
+uv run lint-links.py --strict                 # Exit 1 bei Broken Links / ungültiger visibility
+```
+
 Prüfe die Wiki auf:
 - **Widersprüche:** Seiten die widersprüchliche Aussagen machen → markieren mit `> ⚠️ Widerspruch zu [[andere-seite]]`
 - **Waisen:** Seiten ohne eingehende Links → verlinken oder in index.md aufnehmen
@@ -402,6 +550,10 @@ Report als strukturierte Liste, dann Fixes durchführen.
 - **Immer** `index.md` aktualisieren wenn neue Seiten in concepts/entities/sources/syntheses angelegt werden
 - Bestehende Seiten erweitern statt Duplikate anlegen
 - Bei Unsicherheit über Kategorisierung: `domain: cross` verwenden
+- **Graceful degradation** (OKF-Prinzip „tolerate, don't reject"): Pipeline-Skripte, die über
+  viele Seiten iterieren, dürfen an einer fehlerhaften Einzelseite **nie den ganzen Lauf
+  abbrechen** — Seite überspringen, Warnung loggen, weitermachen. Unbekannte Frontmatter-Felder,
+  unbekannte `type`-Werte und kaputte Links werden toleriert, nicht verworfen.
 
 ---
 

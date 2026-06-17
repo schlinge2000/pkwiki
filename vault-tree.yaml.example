@@ -1,6 +1,15 @@
 # vault-tree.yaml.example
 # Kopieren nach vault-tree.yaml und anpassen.
 # vault-tree.yaml ist in .gitignore (enthält interne Repo-Namen).
+#
+# rights: (siehe CLAUDE.md › Sichtbarkeit & Wissensschichten, Epic #28 / T5)
+#   clearance          höchste (restriktivste) visibility-Stufe, die dieser Node LESEN darf
+#                      Leiter: public < customer < internal < team < personal
+#   default_visibility Default-visibility für hier erzeugte Seiten (muss <= clearance sein)
+#   read               Nodes, deren Inhalt gelesen werden darf — nur self + Vorfahren (nach oben)
+#   write              Nodes, in die geschrieben werden darf — nur self + Nachfahren (nach unten);
+#                      nach oben schreiben = Promotion (Review-Gate, T4), kein Default-Recht
+#   Prüfung: uv run lint-tree.py
 
 tree:
   - node: company
@@ -8,6 +17,11 @@ tree:
     type: company
     sync: sharepoint://knowledge-tree/_company
     ingest_service: github-actions   # wer schreibt auf dieser Ebene
+    rights:
+      clearance: internal
+      default_visibility: internal
+      read: [company]
+      write: [company]
     domains:                         # aktive Domain-Indizes
       - forecasting
       - supply-chain
@@ -21,6 +35,11 @@ tree:
     parent: company
     members: [christian, bernd, steffen]
     sync: sharepoint://knowledge-tree/_team-demand-ai
+    rights:
+      clearance: team
+      default_visibility: team
+      read: [team-demand-ai, company]   # self + Vorfahr
+      write: [team-demand-ai]
     repos:                           # GitHub-Repos für Code-Monitoring
       - owner: inform-group
         repo: demand-ai
@@ -37,6 +56,34 @@ tree:
     parent: team-demand-ai
     owner: christian
     sync: onedrive://personal/knowledge-personal/
+    rights:
+      clearance: personal
+      default_visibility: personal
+      read: [personal-christian, team-demand-ai, company]   # self + alle Vorfahren
+      write: [personal-christian]
+
+# agents: (Epic #28 / T2) — Capability-Profile, die clearance + read/write-Scope an einen
+#   Agenten binden. Effektiver Lesezugriff auf eine Seite:
+#       rank(visibility) <= rank(clearance)  UND  node(seite) ∈ read_scope
+#   write_scope: existierender Node ODER 'session' (ephemerer Sandbox-Node, kein Persist im Baum).
+#   Prüfung: uv run lint-tree.py
+agents:
+  # Externer Produkt-Agent: in eine Software (z.B. ADD*ONE) eingebettet, bedient
+  # externe Software-User. Sieht nur public/customer; schreibt in einen ephemeren
+  # Session-Sandbox-Node, damit externer Input kein internes Gedächtnis vergiftet (T4).
+  - id: product-forecast-assistant
+    description: "In ADD*ONE eingebetteter Assistent für externe Software-User"
+    clearance: customer
+    read_scope: [company]
+    write_scope: session
+
+  # Interner Team-Copilot: liest den eigenen Team-Layer + Company (nach oben),
+  # schreibt Team-Wissen. clearance 'team' deckt public..team ab (inkl. company-internal).
+  - id: internal-demand-ai-copilot
+    description: "Interner Copilot für das Team demand-ai"
+    clearance: team
+    read_scope: [team-demand-ai, company]
+    write_scope: team-demand-ai
 
 poll_interval_minutes: 15
 last_poll_state: .code-watch-state.json

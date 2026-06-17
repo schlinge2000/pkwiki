@@ -130,11 +130,18 @@ def sync(dry_run: bool = False, verbose: bool = False) -> None:
         clone_archive(tmpdir)
 
         changed: list[str] = []
+        skipped = 0
         for archive_path, abs_path in sorted(files.items()):
             dest = Path(tmpdir) / archive_path
             dest.parent.mkdir(parents=True, exist_ok=True)
 
-            content = abs_path.read_bytes()
+            # Graceful: eine unlesbare Datei überspringen statt den ganzen Sync abzubrechen
+            try:
+                content = abs_path.read_bytes()
+            except OSError as exc:
+                skipped += 1
+                print(f"  ! SKIP {archive_path} — {type(exc).__name__}: {exc}", file=sys.stderr)
+                continue
             if dest.exists() and dest.read_bytes() == content:
                 if verbose:
                     print(f"  = {archive_path}")
@@ -151,7 +158,7 @@ def sync(dry_run: bool = False, verbose: bool = False) -> None:
             print("Keine Änderungen — nichts zu pushen.")
             return
 
-        print(f"\n{len(changed)} Datei(en) geändert.")
+        print(f"\n{len(changed)} Datei(en) geändert." + (f" ({skipped} übersprungen)" if skipped else ""))
 
         if dry_run:
             return
@@ -197,7 +204,11 @@ def pull(dry_run: bool = False, verbose: bool = False) -> None:
         conflicts: list[str] = []
         for archive_path, src in sorted(archive_files):
             dest = VAULT_ROOT / archive_path
-            content = src.read_bytes()
+            try:
+                content = src.read_bytes()
+            except OSError as exc:
+                print(f"  ! SKIP {archive_path} — {type(exc).__name__}: {exc}", file=sys.stderr)
+                continue
 
             if dest.exists():
                 if dest.read_bytes() == content:
