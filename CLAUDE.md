@@ -150,6 +150,7 @@ uv run code-watch.py --loop     # Daemon-Modus (nur für Debugging)
 | `lint-tree.py` | Konsistenz-Check der Node-Rechte in `vault-tree.yaml` (read/write-Zonen vs. Hierarchie) |
 | `access.py` | Retrieval-Filter-Bibliothek: `can_read`/`filter_readable` (visibility-Durchsetzung, fail closed) — *single source of truth* der visibility-Leiter |
 | `promote.py` | Promotion-Planner: validiert Hochstufen einer Seite in einen Vorfahr-Node (Review-Gate, kein Auto-Move) |
+| `reorganise.py` | Reorganiser: klassifiziert kuratierte Seiten per LLM in die visibility-Leiter, labelt das Frontmatter und verschiebt `personal`-Seiten nach `wiki/.trash/` (Dry-run per Default, `--apply` zum Ausführen) |
 | `test-connection.py` | Smoke-Test der Azure-OpenAI- und GitHub-Verbindung |
 
 ---
@@ -527,6 +528,31 @@ Prüfe die Wiki auf:
 - **Lücken:** Konzepte die aus mehreren Quellen referenziert werden, aber noch keine eigene Seite haben
 
 Report als strukturierte Liste, dann Fixes durchführen.
+
+---
+
+## Operation: REORGANISE
+
+Wenn der Nutzer sagt "reorganisiere die Wiki", "sortiere das Wissen / labele die Rechte" oder
+"lösche die privaten Inhalte":
+
+```bash
+uv run reorganise.py                       # Dry-run: Klassifizierungs-Plan, nichts wird verändert
+uv run reorganise.py --apply               # Labels schreiben + personal-Seiten nach wiki/.trash/
+uv run reorganise.py --reclassify --apply  # auch bereits gelabelte Seiten neu einstufen
+uv run reorganise.py --limit 5             # nur die ersten 5 Seiten (zum Antesten)
+```
+
+- Klassifiziert jede kuratierte Seite (`concepts/`/`entities/`/`sources/`/`syntheses/`) per Azure
+  OpenAI in die visibility-Leiter (`access.py` = single source of truth) und schreibt das Label
+  ins Frontmatter (`visibility:` + `last_updated:`).
+- **Private Inhalte** (`visibility: personal`) werden aus der **aktiven** Wiki entfernt — nicht
+  hart gelöscht, sondern nach `wiki/.trash/<relpfad>` verschoben (rückholbar, gitignored).
+- **Sicher per Default:** ohne `--apply` nur Plan; bestehende gültige Labels werden respektiert
+  (außer `--reclassify`); graceful (eine fehlerhafte Seite bricht den Lauf nie ab).
+- `code-wiki/` und `manuals/` werden **nicht** angefasst (erben Node-Sichtbarkeit, T5).
+- **Danach:** `uv run rebuild-index.py` und `uv run lint-links.py` nachziehen (Index regenerieren,
+  verwaiste Links auf nach `.trash` verschobene Seiten finden).
 
 ---
 
