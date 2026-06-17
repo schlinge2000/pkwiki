@@ -42,6 +42,13 @@ try:
 except ImportError:
     pass
 
+# Windows-Konsole ist per Default cp1252 — Unicode-Report (✗, ○, →) würde crashen.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 SCRIPT_ROOT = Path(__file__).parent
 VAULT_ROOT = Path(os.environ.get("VAULT_ROOT", str(SCRIPT_ROOT)))
 

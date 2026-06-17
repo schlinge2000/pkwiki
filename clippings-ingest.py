@@ -31,12 +31,16 @@ import argparse
 import io
 import json
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 WIKI_ROOT = Path(__file__).parent
-DEFAULT_CLIPPINGS_DIR = WIKI_ROOT / "Clippings"
+# Der Obsidian Web Clipper schreibt in den Vault-Root (= $VAULT_ROOT, OneDrive),
+# nicht ins Repo. Default folgt dem Vault; Fallback auf Repo-Dir, wenn nicht gesetzt.
+VAULT_ROOT = Path(os.environ.get("VAULT_ROOT", str(WIKI_ROOT)))
+DEFAULT_CLIPPINGS_DIR = VAULT_ROOT / "Clippings"
 DEFAULT_STATE_FILE = WIKI_ROOT / ".clippings-state.json"
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")

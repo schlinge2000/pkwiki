@@ -32,6 +32,13 @@ from pathlib import Path
 
 from access import VISIBILITY_LEVELS, normalize_visibility, rank
 
+# Windows-Konsole ist per Default cp1252 — Unicode-Report (✓, ✗) würde crashen.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 try:
     from dotenv import load_dotenv
     _vault = os.environ.get("VAULT_ROOT")
