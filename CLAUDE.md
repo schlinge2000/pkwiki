@@ -149,6 +149,7 @@ uv run code-watch.py --loop     # Daemon-Modus (nur für Debugging)
 | `lint-links.py` | Graceful Link-Checker: löst `[[wikilinks]]` + bundle-relative Links auf, meldet Broken Links & Waisen; prüft `visibility` |
 | `lint-tree.py` | Konsistenz-Check der Node-Rechte in `vault-tree.yaml` (read/write-Zonen vs. Hierarchie) |
 | `access.py` | Retrieval-Filter-Bibliothek: `can_read`/`filter_readable` (visibility-Durchsetzung, fail closed) — *single source of truth* der visibility-Leiter |
+| `pkwiki-mcp.py` / `pkwiki_server.py` | MCP-Server (stdio): stellt das Wiki als Agenten-Gedächtnis bereit, Zugriffe durch `access.py` gegated |
 | `promote.py` | Promotion-Planner: validiert Hochstufen einer Seite in einen Vorfahr-Node (Review-Gate, kein Auto-Move) |
 | `test-connection.py` | Smoke-Test der Azure-OpenAI- und GitHub-Verbindung |
 
@@ -419,6 +420,28 @@ visible = filter_readable(candidate_pages, agent)   # Gate vor dem Kontextfenste
   ungültige Agenten-`clearance` → `public` (geringster Zugriff). Unbekanntes leakt nie.
 - Tests: `uv run --no-project python -m unittest test_access` (Fokus: kein Leakage).
 - Reiner Stdlib-Code → von jedem Retrieval-Layer (Produkt-Agent, MCP-Server) importierbar.
+
+### MCP-Server (`pkwiki-mcp.py`)
+
+Stellt das Wiki als **Agenten-Gedächtnis** über MCP (stdio) bereit. Der Server *ist* die Sicht
+genau eines Agenten: er lädt dessen `AgentProfile` aus `vault-tree.yaml` (`PKWIKI_AGENT_ID`)
+und setzt alle Zugriffe über `access.py` durch — kein Tool umgeht den Filter.
+
+```bash
+PKWIKI_AGENT_ID=internal-demand-ai-copilot VAULT_ROOT=/pfad uv run pkwiki-mcp.py
+```
+
+| Tool | Wirkung |
+|------|---------|
+| `search_wiki(query)` | Titel-/Volltextsuche — nur lesbare Treffer |
+| `read_page(ref)` | Seiteninhalt (`ref` = `node:pfad.md`), nur wenn `can_read` |
+| `list_index()` | lesbare Seiten nach Node |
+| `remember(text)` | episodisch: an `log.md` im `write_scope` anhängen |
+| `save_note(title, content)` | semantisch: Konzeptseite im `write_scope` (`visibility` = `default_visibility` des Nodes) |
+
+- **Read** gefiltert durch `filter_readable`; **Write** nur in `write_scope` (`can_write`).
+- `write_scope: session` → ephemerer Sandbox unter `.sessions/<agent>/` (gitignored, kein Persist).
+- Kernlogik in `pkwiki_server.py` (ohne `mcp`/`yaml`-Import → testbar); Tests: `test_mcp.py`.
 
 ### Agenten-Gedächtnis & Promotion
 
