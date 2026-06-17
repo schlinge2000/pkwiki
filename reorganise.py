@@ -53,6 +53,13 @@ except ImportError:
 # access.py = single source of truth der visibility-Leiter (reine stdlib, testbar)
 from access import VISIBILITY_LEVELS, normalize_visibility
 
+# Windows-Konsole ist per Default cp1252 — Unicode-Report (✓, ⚠, →) würde crashen.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 SCRIPT_ROOT = Path(__file__).parent
 VAULT_ROOT = Path(os.environ.get("VAULT_ROOT", str(SCRIPT_ROOT)))
 
