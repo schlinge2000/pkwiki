@@ -1,13 +1,29 @@
 """
 rebuild-index.py — Regeneriert wiki/index.md aus allen vorhandenen Wiki-Seiten.
 Liest den 'title'-Eintrag aus dem YAML-Frontmatter jeder Seite.
+
+Usage:
+    uv run rebuild-index.py                 # $VAULT_ROOT/wiki (Fallback: Repo-Pfad)
+    uv run rebuild-index.py --wiki-dir PATH
 """
 
+import argparse
+import os
 import re
+import sys
 from pathlib import Path
 from datetime import datetime
 
-WIKI_DIR = Path(__file__).parent / "wiki"
+# Windows-Konsole ist per Default cp1252 — Unicode-Ausgabe würde crashen.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
+SCRIPT_ROOT = Path(__file__).parent
+# Wiki liegt im Vault (OneDrive), nicht im Repo — VAULT_ROOT respektieren, Fallback aufs Repo.
+VAULT_ROOT = Path(os.environ.get("VAULT_ROOT", str(SCRIPT_ROOT)))
 
 SECTIONS = [
     ("concepts", "Konzepte"),
@@ -32,7 +48,7 @@ def extract_title(path: Path) -> str:
     return path.stem
 
 
-def build_index() -> str:
+def build_index(wiki_dir: Path) -> str:
     lines = [
         "# Wiki Index\n",
         f"> Zuletzt generiert: {datetime.now().strftime('%Y-%m-%d %H:%M')} — nicht manuell bearbeiten.\n",
@@ -40,7 +56,7 @@ def build_index() -> str:
 
     total = 0
     for folder, label in SECTIONS:
-        section_dir = WIKI_DIR / folder
+        section_dir = wiki_dir / folder
         if not section_dir.exists():
             continue
 
@@ -60,13 +76,23 @@ def build_index() -> str:
 
 
 def main():
-    print("Lese Wiki-Seiten...")
-    content = build_index()
+    parser = argparse.ArgumentParser(description="Regeneriert wiki/index.md aus dem Frontmatter")
+    parser.add_argument("--wiki-dir", help="Wiki-Verzeichnis (Default: $VAULT_ROOT/wiki)")
+    args = parser.parse_args()
 
-    index_path = WIKI_DIR / "index.md"
+    wiki_dir = Path(args.wiki_dir) if args.wiki_dir else VAULT_ROOT / "wiki"
+    if not wiki_dir.is_dir():
+        print(f"ERROR: Wiki-Verzeichnis nicht gefunden: {wiki_dir}", file=sys.stderr)
+        return 2
+
+    print(f"Lese Wiki-Seiten aus {wiki_dir} ...")
+    content = build_index(wiki_dir)
+
+    index_path = wiki_dir / "index.md"
     index_path.write_text(content, encoding="utf-8")
     print(f"index.md neu geschrieben: {index_path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
