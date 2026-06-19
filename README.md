@@ -91,6 +91,45 @@ die Pipeline vollautomatisch im Hintergrund — ein paralleler Job zur Zeit.
 
 ---
 
+## Spezialisierte Pipelines
+
+Neben dem Standard-Flow (PDF/PPTX/DOCX → `extract.py` → `ingest.py`) gibt es vier
+Pipelines für Quellen, die eigene Behandlung brauchen. Alle münden in dieselbe Wiki —
+nur der Weg dorthin unterscheidet sich.
+
+### Code-Wiki — GitHub-Repos als lebende Doku
+
+`code-watch.py` pollt konfigurierte GitHub-Repos (`vault-tree.yaml`) auf neue Commits,
+`code-extract.py` verdichtet jeden Commit-Diff zu einem `CommitDigest`, und `code-ingest.py`
+kompiliert daraus eine eigene Wissensbasis unter `wiki/code-wiki/<projekt>/`: eine Seite
+pro **Modul** (Architektur, Abhängigkeiten, offene Punkte) und pro **Ticket** (DAI-661,
+GitHub-Issues), wechselseitig per `[[wikilink]]` verknüpft, plus chronologisches
+`changelog.md`. So entsteht aus der Commit-Historie automatisch eine navigierbare
+Architektur-Doku — ohne dass jemand sie schreibt.
+
+### Handbücher — PDF-Produktdokumentation
+
+`manual-ingest.py` zerlegt PDF-Handbücher entlang ihres Inhaltsverzeichnisses in
+Kapitelseiten unter `wiki/manuals/<produkt>/`, extrahiert UI-Screenshots nach `assets/`
+und beschreibt sie via Vision-API in einem durchsuchbaren `image-index.md`. Ideal, um
+Benutzer- und Admin-Handbücher als befragbare Wissensbasis verfügbar zu machen.
+
+### Transkripte — Meetings mit Kontext
+
+`transcript-ingest.py` verarbeitet Teams-Transkripte (`.docx` aus dem Meeting-Recap)
+sprecher-bewusst: es generiert Initialen (`Peter Kunz` → `PK`), nimmt Event/Kontext aus
+CLI-Flags und schaltet den Ingest auf einen transkript-spezifischen Prompt (Kernaussagen
+je Sprecher, Entscheidungen, Action Items, Zitate — kein Smalltalk als Konzeptseite).
+
+### Clippings — Web-Artikel aus Obsidian
+
+Der **Obsidian Web Clipper** legt geclippte Web-Seiten als `.md` im Vault-Ordner
+`Clippings/` ab — außerhalb von `raw/`, wo der reguläre Watcher sie nie sähe.
+`clippings-ingest.py` schließt die Lücke: es scannt `Clippings/`, ingestet neue/geänderte
+Clips wie eine `raw/links`-Quelle und läuft als 15-Minuten-Scheduled-Task (`WikiClippings`).
+
+---
+
 ## Wiki-Seitentypen
 
 ### `concepts/` — Konzept- und Technologieseiten
