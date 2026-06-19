@@ -18,13 +18,18 @@ Sicher per Default:
   - **Graceful** (OKF „tolerate, don't reject"): eine fehlerhafte Einzelseite bricht den Lauf
     nie ab — Seite überspringen, warnen, weitermachen.
   - **Bestehende gültige Labels werden respektiert** (kein Override) außer mit `--reclassify`.
+  - **Klassifizierungs-Cache**: jede LLM-Antwort wird sofort nach `<wiki>/../.reorg-cache.json`
+    persistiert (Key = Pfad + Inhalts-Fingerprint). Ein Crash verbrennt die teuren Calls daher
+    nie — ein Re-Run (oder Dry-run → Apply) liest aus dem Cache statt erneut zu klassifizieren.
+    Bei Inhaltsänderung wird die Seite automatisch neu klassifiziert. `--no-cache` schaltet ab.
 
 Usage:
-    uv run reorganise.py                       # Dry-run über $VAULT_ROOT/wiki
+    uv run reorganise.py                       # Dry-run über $VAULT_ROOT/wiki (füllt den Cache)
     uv run reorganise.py --wiki-dir PATH       # abweichendes Wiki-Verzeichnis
     uv run reorganise.py --apply               # Labels schreiben + personal → .trash verschieben
     uv run reorganise.py --reclassify --apply  # auch bereits gelabelte Seiten neu einstufen
     uv run reorganise.py --limit 5             # nur die ersten 5 Seiten (zum Antesten)
+    uv run reorganise.py --no-cache            # Cache ignorieren, immer frisch klassifizieren
 
 Benötigt in .env (wie ingest.py):
     AZURE_OPENAI_API_KEY=...
@@ -35,6 +40,8 @@ Benötigt in .env (wie ingest.py):
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import sys
@@ -156,6 +163,38 @@ def prepend_log(existing: str, entry: str) -> str:
     return "".join(lines[:insert_at]) + entry + "\n" + "".join(lines[insert_at:])
 
 
+def content_fingerprint(text: str) -> str:
+    """Stabiler Hash des Seiteninhalts — ändert sich, sobald die Seite editiert wird."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def load_cache(path: Path) -> dict:
+    """Klassifizierungs-Cache laden (rel → {fingerprint, visibility, confidence, reason}).
+
+    Graceful: ein defekter/fehlender Cache liefert leer, bricht den Lauf nie ab.
+    """
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+        except (OSError, json.JSONDecodeError):
+            pass
+    return {}
+
+
+def save_cache(path: Path, cache: dict) -> None:
+    """Cache atomar schreiben (tmp + replace). Der Cache ist Optimierung, kein Pflichtzustand —
+    ein Schreibfehler ist nie fatal."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cache, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # LLM-Klassifizierung (deferred imports — Modul bleibt ohne openai/pydantic importierbar)
 # ---------------------------------------------------------------------------
@@ -248,6 +287,10 @@ def main() -> int:
                         help="auch Seiten mit bereits gültigem visibility-Label neu einstufen")
     parser.add_argument("--limit", type=int, default=0,
                         help="nur die ersten N Seiten verarbeiten (0 = alle)")
+    parser.add_argument("--cache-file",
+                        help="Klassifizierungs-Cache (Default: <wiki>/../.reorg-cache.json)")
+    parser.add_argument("--no-cache", action="store_true",
+                        help="Cache ignorieren und nicht schreiben (immer frisch klassifizieren)")
     args = parser.parse_args()
 
     wiki_dir = Path(args.wiki_dir) if args.wiki_dir else VAULT_ROOT / "wiki"
@@ -273,6 +316,13 @@ def main() -> int:
     today = datetime.now().strftime("%Y-%m-%d")
     trash_dir = wiki_dir / TRASH_DIRNAME
 
+    # Klassifizierungs-Cache: je LLM-Call sofort persistiert, damit ein Crash nie die
+    # teuren Calls verbrennt. Ein Re-Run (oder Dry-run → Apply) liest daraus statt erneut
+    # das LLM zu fragen. Key = rel-Pfad, gültig solange der Inhalts-Fingerprint passt.
+    cache_path = Path(args.cache_file) if args.cache_file else wiki_dir.parent / ".reorg-cache.json"
+    cache = {} if args.no_cache else load_cache(cache_path)
+    cache_hits = 0
+
     plan: list[tuple[str, str, str, str, str]] = []  # (rel, action, visibility, prev, note)
     to_trash: list[tuple[Path, str, str]] = []       # (page, visibility, reason)
     to_label: list[tuple[Path, str]] = []            # (page, visibility)
@@ -297,13 +347,26 @@ def main() -> int:
         if prev_valid and not args.reclassify:
             visibility, note = prev, "vorhandenes Label"
         else:
-            try:
-                visibility, confidence, reason = classify_page(client, deployment, rel, text)
-                note = f"LLM/{confidence}: {reason}"
-            except Exception as exc:  # graceful: eine Seite darf den Lauf nicht abbrechen
-                skipped += 1
-                print(f"  ! SKIP {rel} — Klassifizierung fehlgeschlagen: {exc}", file=sys.stderr)
-                continue
+            fp = content_fingerprint(text)
+            cached = None if args.no_cache else cache.get(rel)
+            if (cached and cached.get("fingerprint") == fp
+                    and cached.get("visibility") in VISIBILITY_LEVELS):
+                visibility = cached["visibility"]
+                note = f"Cache/{cached.get('confidence', '?')}: {cached.get('reason', '')}"
+                cache_hits += 1
+            else:
+                try:
+                    visibility, confidence, reason = classify_page(client, deployment, rel, text)
+                    note = f"LLM/{confidence}: {reason}"
+                except Exception as exc:  # graceful: eine Seite darf den Lauf nicht abbrechen
+                    skipped += 1
+                    print(f"  ! SKIP {rel} — Klassifizierung fehlgeschlagen: {exc}", file=sys.stderr)
+                    continue
+                if not args.no_cache:
+                    # Sofort persistieren: ein späterer Crash verbrennt diesen Call nicht mehr.
+                    cache[rel] = {"fingerprint": fp, "visibility": visibility,
+                                  "confidence": confidence, "reason": reason}
+                    save_cache(cache_path, cache)
 
         if is_private(visibility):
             plan.append((rel, "TRASH", "personal", prev or "—", note))
@@ -326,6 +389,8 @@ def main() -> int:
     print(f"  → .trash (personal)  : {len(to_trash)}")
     print(f"  unverändert          : {sum(1 for p in plan if p[1] == 'keep')}")
     print(f"  übersprungen         : {skipped}")
+    if not args.no_cache:
+        print(f"  aus Cache (kein LLM) : {cache_hits}  →  {cache_path}")
 
     if not args.apply:
         print("\n(Dry-run — mit --apply ausführen, um Labels zu schreiben und personal-Seiten "
