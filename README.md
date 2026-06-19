@@ -106,6 +106,7 @@ domain: ai
 sources: [raw/slides/FINAL BO KI Webinar.pptx]
 related: ["[[demand-forecasting]]", "[[timemoe]]", "[[transformer-zeitreihen]]"]
 confidence: high
+visibility: internal
 last_updated: 2025-04-19
 ---
 
@@ -129,6 +130,63 @@ Vom LLM erkannte Muster und Verbindungen über mehrere Quellen hinweg.
 
 `index.md` listet alle Wiki-Seiten. `log.md` ist ein Append-only-Aktivitätslog jeder
 Ingest-Operation mit Zeitstempel, Quelle und erstellten/aktualisierten Seiten.
+
+---
+
+## Sichtbarkeit & Wissensschichten
+
+Eine geteilte Wissensbasis braucht Schichten: Nicht alles, was Du weißt, darf jeder
+Kunde lesen. Jede kuratierte Seite trägt daher ein `visibility:`-Feld — eine
+Klassifizierung von offen nach restriktiv:
+
+```
+public  <  customer  <  internal  <  team  <  personal
+```
+
+- **Safe by default:** Fehlt das Feld, gilt `personal` — lieber zu restriktiv als
+  versehentlich geleakt. Ein fehlendes Feld ist kein Fehler, nur ein Lint-Hinweis.
+- **Klassifizierung, keine Mauer:** Das Label allein schützt nichts. Durchgesetzt wird
+  es im Retrieval-Layer durch [`access.py`](access.py) — eine reine-Stdlib-Bibliothek,
+  die **vor** der Kontextbefüllung filtert (`filter_readable`) und **fail closed** ist:
+  Unbekannte/fehlende Werte verbergen die Seite, statt sie zu leaken.
+
+### Der Wissensbaum (`vault-tree.yaml`)
+
+Das Wissen ist in Nodes organisiert (`company → team → personal`). Jeder Node trägt ein
+`rights`-Block, das vorher implizite SharePoint/OneDrive-ACLs explizit macht:
+
+```yaml
+rights:
+  clearance: team            # höchste Stufe, die der Node LESEN darf
+  default_visibility: team   # Default für hier erzeugte Seiten (<= clearance)
+  read:  [team, company]     # nur nach oben lesen — keine seitlichen Leaks
+  write: [team]              # nach oben schreiben = Promotion (Review-Gate)
+```
+
+**Read nur nach oben, Write nur nach unten.** Hochstufen in einen breiteren Layer ist
+eine bewusste, Review-pflichtige **Promotion** — nie automatisch.
+[`promote.py`](promote.py) *plant und validiert* sie (Vorfahr? verbreitert das Publikum?),
+führt den Move aber nicht selbst aus.
+
+### Agenten-Gedächtnis
+
+Das Wiki kann das **Langzeitgedächtnis eines Agenten** sein: episodisch (`log.md`),
+semantisch (`concepts/` + `entities/`), prozedural (`sources/`). Ein Agent erhält ein
+Capability-Profil (`clearance` + `read_scope`/`write_scope`). Low-Trust-Agenten (z.B. ein
+in eine Software eingebetteter Produkt-Assistent) schreiben in einen ephemeren
+`session`-Sandbox — so vergiftet externer Input nie das persistente Gedächtnis.
+
+### Tooling
+
+| Befehl | Zweck |
+|--------|-------|
+| `uv run reorganise.py [--apply]` | Bestehende Seiten per LLM klassifizieren, Frontmatter labeln, `personal` → `.trash` |
+| `uv run promote.py --from … --to … --visibility …` | Promotion in einen Vorfahr-Node planen & validieren |
+| `uv run lint-tree.py [--strict]` | Node-Rechte gegen die Hierarchie prüfen |
+| `uv run lint-links.py [--show-missing-visibility]` | Broken Links, Waisen & ungültige/fehlende `visibility` |
+
+Vollständiges Modell (Leiter, Node-Rechte, Agenten-Capabilities, Promotion-Regeln):
+siehe [`CLAUDE.md`](CLAUDE.md#sichtbarkeit--wissensschichten).
 
 ---
 
@@ -310,6 +368,8 @@ Start-ScheduledTask -TaskName KnowledgeTree-MetaSync
 | `extract-images.py` | Batch-Vision für alle Bilder aus PPTX/PDF/DOCX |
 | `synthesize.py` / `generate.py` | LLM-Synthese & PPTX-Generierung aus Wiki-Seiten |
 | `manual-ingest.py` | PDF-Handbücher → Kapitelseiten mit Bild-Index |
+| `transcript-ingest.py` | Teams-Transkripte (`.docx`) → kontextualisierte Quellenübersicht |
+| `clippings-ingest.py` | Obsidian-Web-Clipper-Clips (`Clippings/*.md`) → Wiki (wie `raw/links`) |
 
 ### Code-Wiki (GitHub-Monitoring)
 
@@ -342,6 +402,16 @@ Start-ScheduledTask -TaskName KnowledgeTree-MetaSync
 | `reextract-failed.ps1` / `reextract-missing.ps1` / `reextract-slides.ps1` | Re-Extraktion einzelner Kategorien |
 | `rebuild-index.py` | Regeneriert `wiki/index.md` aus YAML-Frontmatter |
 | `rebuild-code-wiki-index.py` | Patcht Obsidian-Wikilinks in `wiki/code-wiki/` |
+
+### Sichtbarkeit, Zugriff & Qualität
+
+| Skript | Beschreibung |
+|--------|-------------|
+| `access.py` | Retrieval-Filter-Bibliothek (`can_read`/`filter_readable`, fail-closed) — *single source of truth* der visibility-Leiter |
+| `reorganise.py` | Klassifiziert kuratierte Seiten per LLM in die visibility-Leiter, labelt Frontmatter, verschiebt `personal`-Seiten nach `wiki/.trash/` |
+| `promote.py` | Promotion-Planner: validiert das Hochstufen einer Seite in einen Vorfahr-Node (Review-Gate, kein Auto-Move) |
+| `lint-links.py` | Graceful Link-Checker: löst `[[wikilinks]]` + bundle-relative Links auf, meldet Broken Links & Waisen, prüft `visibility` |
+| `lint-tree.py` | Konsistenz-Check der Node-Rechte in `vault-tree.yaml` (read/write-Zonen vs. Hierarchie) |
 
 ---
 
@@ -418,12 +488,15 @@ wiki/              # Die Wissensbasis — nur lokal + OneDrive-Sync
   entities/        # Personen, Unternehmen, Produkte
   sources/         # Zusammenfassung je Quelldokument
   syntheses/       # Themenübergreifende Analysen
+  .trash/          # Aussortierte personal-Seiten (reorganise.py, rückholbar)
 
 ingest.py          # Haupt-Pipeline: Dokument → Wiki-Seiten
 extract.py         # Extraktion: PPTX/DOCX/PDF → Markdown + Vision
 watch.ps1          # Watcher: neue Dateien in raw/ → automatischer Ingest
 clippings-ingest.py # Pipeline: Obsidian-Web-Clipper-Clips (Clippings/*.md) → Wiki
+access.py          # Retrieval-Filter: visibility-Durchsetzung (fail-closed)
 CLAUDE.md          # Schema & Regeln für den LLM-Maintainer
+vault-tree.yaml.example # Wissensbaum: Node-Rechte & Agenten-Capabilities
 .env.example       # Vorlage fur Azure-Credentials
 ```
 
@@ -461,6 +534,7 @@ Frontmatter-Format, Wikilink-Konventionen, Qualitätsstandards und die drei Haup
 - **INGEST** — Dokument zu Wiki-Seiten kompilieren
 - **QUERY** — Wissensbasis befragen (ohne RAG-Infrastruktur)
 - **LINT** — Wiki auf Widersprüche, Waisen und veraltete Einträge prüfen
+- **REORGANISE** — Wissen klassifizieren, Sichtbarkeits-Rechte labeln, Privates aussortieren
 
 Wenn Claude Code im Projektverzeichnis geöffnet wird, liest er `CLAUDE.md` automatisch
 und weiß damit exakt, wie die Wiki gepflegt werden soll.
