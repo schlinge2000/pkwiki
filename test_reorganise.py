@@ -9,11 +9,14 @@ import unittest
 from pathlib import Path
 
 from reorganise import (
+    content_fingerprint,
     current_visibility,
     has_frontmatter,
     is_private,
     iter_curated_pages,
+    load_cache,
     prepend_log,
+    save_cache,
     set_visibility,
     trash_destination,
 )
@@ -133,6 +136,30 @@ class LogTests(unittest.TestCase):
         out = prepend_log("", "## 2026-06-17 — REORGANISE\nneu")
         self.assertIn("# Aktivitätslog", out)
         self.assertIn("REORGANISE", out)
+
+
+class CacheTests(unittest.TestCase):
+    def test_fingerprint_changes_with_content(self):
+        self.assertEqual(content_fingerprint("abc"), content_fingerprint("abc"))
+        self.assertNotEqual(content_fingerprint("abc"), content_fingerprint("abd"))
+
+    def test_save_then_load_roundtrip(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / ".reorg-cache.json"
+            cache = {"concepts/a.md": {"fingerprint": "x", "visibility": "internal",
+                                       "confidence": "high", "reason": "ä → ü"}}
+            save_cache(path, cache)
+            self.assertEqual(load_cache(path), cache)
+
+    def test_missing_cache_is_empty(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(load_cache(Path(d) / "nope.json"), {})
+
+    def test_broken_cache_is_graceful(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "broken.json"
+            path.write_text("{ not valid json", encoding="utf-8")
+            self.assertEqual(load_cache(path), {})
 
 
 if __name__ == "__main__":
