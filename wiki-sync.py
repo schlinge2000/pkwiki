@@ -30,6 +30,14 @@ import tempfile
 from pathlib import Path
 from datetime import datetime, timezone
 
+# Windows-Konsole ist per Default cp1252 — Ausgabe mit → würde crashen (und der
+# Scheduled Task WikiSync damit jeden Lauf fehlschlagen, sobald es etwas zu syncen gibt).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 try:
     from dotenv import load_dotenv
     # Order: OS env > Vault .env (kanonisch, OneDrive-synced) > Script-local .env (Fallback)
