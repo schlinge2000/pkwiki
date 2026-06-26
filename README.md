@@ -229,6 +229,75 @@ siehe [`CLAUDE.md`](CLAUDE.md#sichtbarkeit--wissensschichten).
 
 ---
 
+## MCP-Server — Wiki als Copilot-Gedächtnis
+
+Der **pkwiki-MCP-Server** stellt die Wiki als **zugriffsgefiltertes Gedächtnis genau eines
+Agenten** über [MCP](https://modelcontextprotocol.io) (stdio) bereit. Er *ist* die Sicht
+dieses Agenten: beim Start lädt er dessen Profil aus `vault-tree.yaml` (`PKWIKI_AGENT_ID`)
+und setzt **jede** Operation über [`access.py`](access.py) durch — kein Tool umgeht den Filter.
+
+```bash
+PKWIKI_AGENT_ID=internal-demand-ai-copilot VAULT_ROOT=/pfad uv run pkwiki-mcp.py
+```
+
+### Tools
+
+| Tool | Memory-Typ | Wirkung |
+|------|-----------|---------|
+| `search_wiki(query)` | — | Titel-/Volltextsuche über **lesbare** Seiten |
+| `read_page(ref)` | — | Seiteninhalt, wenn lesbar (`ref` = `node:concepts/foo.md`) |
+| `list_index()` | — | lesbare Seiten nach Node |
+| `remember(text)` | episodisch | hängt an `log.md` im `write_scope` |
+| `save_note(title, content)` | semantisch | legt Konzeptseite im `write_scope` an (visibility = Node-Default) |
+
+**Durchsetzung:** Lesen nur wenn `rank(visibility) ≤ rank(clearance)` **und** `node ∈ read_scope`;
+Schreiben nur in den `write_scope` (Node **oder** `session`-Sandbox). Fail closed: Unbekanntes
+wird verborgen, nie geleakt. Der Agent kann seine eigenen Rechte nicht ändern — Identität
+(`PKWIKI_AGENT_ID`) und Scopes (`vault-tree.yaml`) liegen außerhalb seiner Schreibzone.
+
+### Aufbau
+
+- [`pkwiki_server.py`](pkwiki_server.py) — reine Kernlogik (nur stdlib + `access.py`), netzfrei testbar
+- [`pkwiki-mcp.py`](pkwiki-mcp.py) — dünner FastMCP-Entrypoint (stdio), PEP-723-Inline-Deps
+- `test_mcp.py` — Read-Gating, Write-Scoping, Flat-Vault-Fallback, Bundle-Vererbung, personal-Memory
+
+### Schreibzonen & persönliches Gedächtnis
+
+- **`session`** (Low-Trust/Produkt-Agent) → ephemerer Sandbox `<vault>/.sessions/<agent>/` (gitignored) —
+  externer Input vergiftet nie das persistente Gedächtnis.
+- **persistenter Node** (vertrauenswürdiger Agent) → schreibt in `<vault>/<node-path>/wiki/` und
+  liest es zurück. Ein **persönlicher** Node (`clearance: personal`) ist privates Langzeitgedächtnis;
+  Hochstufen ins Team/Company nur via [`promote.py`](promote.py) (Review-Gate).
+- **Bundles erben Sichtbarkeit:** `manuals/` (Produktdoku) ist für `customer`-Agenten lesbar,
+  ohne dass jede Seite ein `visibility`-Feld trägt (überschreibbar via `bundle_visibility`).
+
+### Registrierung in Claude
+
+**Claude Code (alle Projekte):**
+```bash
+claude mcp add pkwiki -s user \
+  -e PKWIKI_AGENT_ID=<agent-id> -e VAULT_ROOT="<vault>" \
+  -- uv run --directory <repo> pkwiki-mcp.py
+```
+
+**Claude Desktop:** in `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+```json
+{
+  "mcpServers": {
+    "pkwiki": {
+      "command": "<absoluter-uv-pfad>",
+      "args": ["run", "--directory", "<repo>", "pkwiki-mcp.py"],
+      "env": { "PKWIKI_AGENT_ID": "<agent-id>", "VAULT_ROOT": "<vault>" }
+    }
+  }
+}
+```
+GUI-Apps haben `uv` oft nicht auf PATH → **absoluten** `uv`-Pfad verwenden. Danach Client neu starten.
+
+Kernlogik + Tools im Detail: siehe [`CLAUDE.md`](CLAUDE.md#mcp-server-pkwiki-mcppy).
+
+---
+
 ## Voraussetzungen
 
 - [`uv`](https://docs.astral.sh/uv/) — Python-Paketmanager (`winget install astral-sh.uv`)
