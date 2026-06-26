@@ -295,6 +295,8 @@ claude mcp add pkwiki -s user \
 GUI-Apps haben `uv` oft nicht auf PATH → **absoluten** `uv`-Pfad verwenden. Danach Client neu starten.
 
 Kernlogik + Tools im Detail: siehe [`CLAUDE.md`](CLAUDE.md#mcp-server-pkwiki-mcppy).
+Übernahme in ein anderes Projekt (Multi-User-Copilot in einer App): siehe
+[`docs/mcp-knowledge-blueprint.md`](docs/mcp-knowledge-blueprint.md).
 
 ---
 
