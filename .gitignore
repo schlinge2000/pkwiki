@@ -51,3 +51,6 @@ output/*
 # Temporäre Dateien
 *.tmp
 ~$*
+
+# Ephemerer MCP-Session-Sandbox (write_scope: session) — nie committen
+.sessions/
