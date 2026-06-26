@@ -85,5 +85,14 @@ agents:
     read_scope: [team-demand-ai, company]
     write_scope: team-demand-ai
 
+  # Persönliches Langzeitgedächtnis: schreibt in den eigenen personal-Node UND liest ihn
+  # zurück (clearance 'personal'). Sieht zusätzlich Team + Company nach oben. Privates bleibt
+  # im personal-Node; Hochstufen ins Team/Company nur via promote.py (Review-Gate, T4).
+  - id: personal-christian-copilot
+    description: "Persönlicher Copilot/Gedächtnis für christian"
+    clearance: personal
+    read_scope: [personal-christian, team-demand-ai, company]
+    write_scope: personal-christian
+
 poll_interval_minutes: 15
 last_poll_state: .code-watch-state.json

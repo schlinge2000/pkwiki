@@ -213,5 +213,46 @@ class BundleVisibilityTests(unittest.TestCase):
         self.assertIn("company:manuals/addone-bo/kap.md", intr)
 
 
+PERSONAL_TREE = {
+    "tree": [
+        {"node": "company", "path": "_company/",
+         "rights": {"clearance": "internal", "default_visibility": "internal"}},
+        {"node": "pers", "path": "_pers/", "parent": "company",
+         "rights": {"clearance": "personal", "default_visibility": "personal"}},
+    ]
+}
+
+
+class PersonalMemoryTests(unittest.TestCase):
+    """Persönlicher Agent (clearance=personal) schreibt in seinen Node UND liest zurück,
+    während die geteilte flache Wiki (company) weiter sichtbar bleibt."""
+
+    def setUp(self):
+        self.vault = make_flat_vault()   # flaches <vault>/wiki = company-Node
+
+    def test_writes_to_personal_node_not_session(self):
+        a = agent("personal", ["pers", "company"], write="pers")
+        res = core.save_note(self.vault, PERSONAL_TREE, a, "Mein Merksatz", "Inhalt")
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["node"], "pers")
+        self.assertEqual(res["visibility"], "personal")
+        self.assertNotIn(".sessions", res["path"])
+        self.assertTrue((self.vault / "_pers" / "wiki" / "concepts").exists())
+
+    def test_personal_agent_reads_its_note_back_and_shared_wiki(self):
+        a = agent("personal", ["pers", "company"], write="pers")
+        core.save_note(self.vault, PERSONAL_TREE, a, "Mein Merksatz", "Inhalt")
+        refs = {h["ref"] for h in core.list_index(self.vault, PERSONAL_TREE, a)}
+        self.assertIn("pers:concepts/mein-merksatz.md", refs)   # eigenes zurücklesbar
+        self.assertIn("company:concepts/public.md", refs)       # geteilte Wiki weiter da
+
+    def test_team_agent_cannot_see_personal_note(self):
+        pa = agent("personal", ["pers", "company"], write="pers")
+        core.save_note(self.vault, PERSONAL_TREE, pa, "Geheim", "privat")
+        ta = agent("team", ["company"])   # pers nicht im scope, clearance < personal
+        refs = {h["ref"] for h in core.list_index(self.vault, PERSONAL_TREE, ta)}
+        self.assertNotIn("pers:concepts/geheim.md", refs)
+
+
 if __name__ == "__main__":
     unittest.main()
