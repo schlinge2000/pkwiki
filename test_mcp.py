@@ -46,6 +46,36 @@ def agent(clearance, read, write=SESSION):
                         read_scope=frozenset(read), write_scope=write)
 
 
+def make_flat_vault() -> Path:
+    """Flaches Vault: ein einziges <vault>/wiki, KEINE Pro-Node-Ordner (Realfall)."""
+    root = Path(tempfile.mkdtemp())
+
+    def page(rel, visibility, title, body="Inhalt."):
+        p = root / "wiki" / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(
+            f"---\ntitle: {title}\ntype: concept\nvisibility: {visibility}\n---\n\n{body}\n",
+            encoding="utf-8",
+        )
+
+    page("concepts/public.md", "public", "Public")
+    page("concepts/internal.md", "internal", "Internal")
+    page("concepts/team.md", "team", "Team")
+    page("concepts/private.md", "personal", "Private")
+    return root
+
+
+# Wurzel-Node 'company' (parent-los), 'team-x' als Kind — Pfade existieren im flachen Vault nicht.
+FLAT_TREE = {
+    "tree": [
+        {"node": "company", "path": "_company/",
+         "rights": {"clearance": "internal", "default_visibility": "internal"}},
+        {"node": "team-x", "path": "_team-x/", "parent": "company",
+         "rights": {"clearance": "team", "default_visibility": "team"}},
+    ]
+}
+
+
 class ReadGatingTests(unittest.TestCase):
     def setUp(self):
         self.vault = make_vault()
@@ -112,6 +142,36 @@ class WriteTests(unittest.TestCase):
         a = agent("internal", ["company"], write="ghost-node")
         res = core.save_note(self.vault, TREE, a, "X", "y")
         self.assertEqual(res["node"], SESSION)
+
+
+class FlatVaultFallbackTests(unittest.TestCase):
+    """Fallback: ein flaches <vault>/wiki wird dem Wurzel-Node zugeordnet."""
+
+    def setUp(self):
+        self.vault = make_flat_vault()
+
+    def test_flat_wiki_maps_to_root_node(self):
+        dirs = core.node_wiki_dirs(self.vault, FLAT_TREE)
+        self.assertEqual(dirs, {"company": self.vault / "wiki"})
+
+    def test_team_agent_sees_up_to_team_but_not_personal(self):
+        a = agent("team", ["company"])
+        refs = {h["ref"] for h in core.list_index(self.vault, FLAT_TREE, a)}
+        self.assertEqual(refs, {"company:concepts/public.md",
+                                "company:concepts/internal.md",
+                                "company:concepts/team.md"})  # personal verborgen
+
+    def test_customer_agent_sees_only_public(self):
+        a = agent("customer", ["company"])
+        refs = {h["ref"] for h in core.list_index(self.vault, FLAT_TREE, a)}
+        self.assertEqual(refs, {"company:concepts/public.md"})
+
+    def test_per_node_layout_still_wins_when_present(self):
+        # Regression: existieren echte Pro-Node-Ordner, bleibt das alte Verhalten.
+        multi = make_vault()
+        dirs = core.node_wiki_dirs(multi, TREE)
+        self.assertEqual(set(dirs), {"company", "team-x"})
+        self.assertEqual(dirs["company"], multi / "_company" / "wiki")
 
 
 if __name__ == "__main__":

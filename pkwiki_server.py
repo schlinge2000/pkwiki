@@ -61,11 +61,28 @@ class WikiPage:
 # ---------------------------------------------------------------------------
 
 def node_wiki_dirs(vault_root: Path, tree: dict) -> dict[str, Path]:
-    """node-name → dessen wiki/-Verzeichnis (mirror der wiki-sync.py-Konvention)."""
+    """node-name → dessen wiki/-Verzeichnis (mirror der wiki-sync.py-Konvention).
+
+    Fallback für *flache* Vaults: existiert keine der Pro-Node-Strukturen
+    (<vault>/<node-path>/wiki), aber ein einzelnes <vault>/wiki, wird dieses dem
+    Wurzel-Node (parent-los = breiteste Sicht) zugeordnet. Die Sichtbarkeits-Achse
+    (visibility ≤ clearance) übernimmt dann die Filterung — kein physischer Umbau nötig.
+    """
+    nodes = [n for n in (tree.get("tree", []) or [])
+             if isinstance(n, dict) and n.get("node")]
     out: dict[str, Path] = {}
-    for n in tree.get("tree", []) or []:
-        if isinstance(n, dict) and n.get("node") and n.get("path"):
+    for n in nodes:
+        if n.get("path"):
             out[n["node"]] = vault_root / n["path"] / "wiki"
+
+    if not any(d.exists() for d in out.values()):
+        flat = vault_root / "wiki"
+        if flat.is_dir():
+            root = next((n["node"] for n in nodes if not n.get("parent")), None)
+            if root is None and nodes:
+                root = nodes[0]["node"]
+            if root is not None:
+                return {root: flat}
     return out
 
 
