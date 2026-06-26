@@ -33,6 +33,18 @@ FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 VISIBILITY_RE = re.compile(r"^visibility:\s*(.+)$", re.MULTILINE)
 TITLE_RE = re.compile(r"^title:\s*(.+)$", re.MULTILINE)
 
+# Auto-generierte Bundles tragen kein per-Seiten visibility-Feld (CLAUDE.md/T5: sie erben
+# eine Sichtbarkeit statt sie pro Seite zu labeln). Default-Vererbung nach Bundle (= erster
+# Pfad-Abschnitt unter wiki/): manuals/ = Produktdoku für Software-User → customer.
+# Überschreibbar via vault-tree.yaml: top-level 'bundle_visibility': {<bundle>: <stufe>}.
+BUNDLE_VISIBILITY = {"manuals": "customer"}
+
+
+def bundle_visibility_map(tree: dict) -> dict[str, str]:
+    """Bundle→visibility: eingebaute Defaults, per vault-tree.yaml überschreibbar."""
+    override = tree.get("bundle_visibility") if isinstance(tree, dict) else None
+    return {**BUNDLE_VISIBILITY, **(override or {})}
+
 
 def _slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "note"
@@ -109,20 +121,28 @@ def get_agent(tree: dict, agent_id: str) -> AgentProfile:
 # Seiten einsammeln
 # ---------------------------------------------------------------------------
 
-def _parse_page(node: str, wiki_dir: Path, f: Path) -> WikiPage | None:
+def _parse_page(node: str, wiki_dir: Path, f: Path,
+                bundles: dict[str, str] | None = None) -> WikiPage | None:
     try:
         text = f.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None   # graceful: unlesbare Seite überspringen
     fm = FRONTMATTER_RE.search(text)
     block = fm.group(1) if fm else ""
+    rel = f.relative_to(wiki_dir).as_posix()
     vm = VISIBILITY_RE.search(block)
+    if vm:
+        visibility = normalize_visibility(vm.group(1))   # explizites Label gewinnt
+    else:
+        # Kein per-Seiten-Label (z.B. auto-generierte Bundles): Bundle-Default erben
+        # (erster Pfad-Abschnitt), sonst fail-closed personal.
+        inherited = (bundles if bundles is not None else BUNDLE_VISIBILITY).get(rel.split("/", 1)[0])
+        visibility = normalize_visibility(inherited)
     tm = TITLE_RE.search(block)
-    visibility = normalize_visibility(vm.group(1) if vm else None)
     title = (tm.group(1).strip().strip('"').strip("'") if tm else f.stem)
     return WikiPage(
         node=node,
-        rel=f.relative_to(wiki_dir).as_posix(),
+        rel=rel,
         abs_path=f,
         visibility=visibility,
         title=title,
@@ -132,11 +152,12 @@ def _parse_page(node: str, wiki_dir: Path, f: Path) -> WikiPage | None:
 def collect_pages(vault_root: Path, tree: dict) -> list[WikiPage]:
     """Alle Wiki-Seiten über alle Nodes — unabhängig von Sichtbarkeit (Filter kommt später)."""
     pages: list[WikiPage] = []
+    bundles = bundle_visibility_map(tree)
     for node, wiki_dir in node_wiki_dirs(vault_root, tree).items():
         if not wiki_dir.exists():
             continue
         for f in sorted(wiki_dir.rglob("*.md")):
-            page = _parse_page(node, wiki_dir, f)
+            page = _parse_page(node, wiki_dir, f, bundles)
             if page is not None:
                 pages.append(page)
     return pages

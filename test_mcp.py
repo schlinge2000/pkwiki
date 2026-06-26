@@ -174,5 +174,44 @@ class FlatVaultFallbackTests(unittest.TestCase):
         self.assertEqual(dirs["company"], multi / "_company" / "wiki")
 
 
+class BundleVisibilityTests(unittest.TestCase):
+    """Auto-generierte Bundles ohne visibility-Frontmatter erben eine Bundle-Sichtbarkeit."""
+
+    def _vault(self) -> Path:
+        root = Path(tempfile.mkdtemp())
+        man = root / "wiki" / "manuals" / "addone-bo" / "kap.md"
+        man.parent.mkdir(parents=True, exist_ok=True)
+        man.write_text("---\ntitle: Kapitel\ntype: manual-chapter\n---\n\nAnleitung.\n",
+                       encoding="utf-8")
+        code = root / "wiki" / "code-wiki" / "demand-ai" / "mod.md"
+        code.parent.mkdir(parents=True, exist_ok=True)
+        code.write_text("---\ntitle: Modul\ntype: code-module\n---\n\nArchitektur.\n",
+                        encoding="utf-8")
+        return root
+
+    def test_manuals_visible_to_customer_but_codewiki_hidden(self):
+        v = self._vault()
+        a = agent("customer", ["company"])
+        refs = {h["ref"] for h in core.list_index(v, FLAT_TREE, a)}
+        self.assertIn("company:manuals/addone-bo/kap.md", refs)        # → customer geerbt
+        self.assertNotIn("company:code-wiki/demand-ai/mod.md", refs)   # kein Default → personal
+
+    def test_explicit_label_overrides_bundle_default(self):
+        v = self._vault()
+        (v / "wiki" / "manuals" / "addone-bo" / "kap.md").write_text(
+            "---\ntitle: Kapitel\nvisibility: internal\n---\n\nx\n", encoding="utf-8")
+        a = agent("customer", ["company"])
+        refs = {h["ref"] for h in core.list_index(v, FLAT_TREE, a)}
+        self.assertNotIn("company:manuals/addone-bo/kap.md", refs)     # internal > customer
+
+    def test_tree_override_changes_bundle_visibility(self):
+        v = self._vault()
+        tree = {**FLAT_TREE, "bundle_visibility": {"manuals": "internal"}}
+        cust = {h["ref"] for h in core.list_index(v, tree, agent("customer", ["company"]))}
+        self.assertNotIn("company:manuals/addone-bo/kap.md", cust)     # jetzt internal
+        intr = {h["ref"] for h in core.list_index(v, tree, agent("internal", ["company"]))}
+        self.assertIn("company:manuals/addone-bo/kap.md", intr)
+
+
 if __name__ == "__main__":
     unittest.main()
