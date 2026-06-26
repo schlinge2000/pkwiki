@@ -72,29 +72,37 @@ class WikiPage:
 # Konfiguration / Baum
 # ---------------------------------------------------------------------------
 
-def node_wiki_dirs(vault_root: Path, tree: dict) -> dict[str, Path]:
-    """node-name → dessen wiki/-Verzeichnis (mirror der wiki-sync.py-Konvention).
+def _root_node(nodes: list[dict]) -> str | None:
+    """Wurzel-Node (parent-los = breiteste Sicht); Fallback: erster Node."""
+    root = next((n["node"] for n in nodes if not n.get("parent")), None)
+    if root is None and nodes:
+        root = nodes[0]["node"]
+    return root
 
-    Fallback für *flache* Vaults: existiert keine der Pro-Node-Strukturen
-    (<vault>/<node-path>/wiki), aber ein einzelnes <vault>/wiki, wird dieses dem
-    Wurzel-Node (parent-los = breiteste Sicht) zugeordnet. Die Sichtbarkeits-Achse
-    (visibility ≤ clearance) übernimmt dann die Filterung — kein physischer Umbau nötig.
+
+def node_wiki_dirs(vault_root: Path, tree: dict) -> dict[str, Path]:
+    """node-name → dessen wiki/-Verzeichnis für das LESEN (Seiten-Erfassung).
+
+    Erfasst alle existierenden Pro-Node-Ordner (<vault>/<node-path>/wiki) UND — koexistierend —
+    ein flaches <vault>/wiki, das dem Wurzel-Node zugeordnet wird, sofern es nicht ohnehin
+    schon einem Node gehört. So funktionieren beide Layouts zugleich: die geteilte flache
+    Wiki (= Wurzel-Node) und z.B. ein persönlicher Node mit eigenem Verzeichnis. Die
+    Sichtbarkeits-Achse (visibility ≤ clearance) übernimmt die Filterung.
     """
     nodes = [n for n in (tree.get("tree", []) or [])
              if isinstance(n, dict) and n.get("node")]
     out: dict[str, Path] = {}
     for n in nodes:
         if n.get("path"):
-            out[n["node"]] = vault_root / n["path"] / "wiki"
+            d = vault_root / n["path"] / "wiki"
+            if d.exists():
+                out[n["node"]] = d
 
-    if not any(d.exists() for d in out.values()):
-        flat = vault_root / "wiki"
-        if flat.is_dir():
-            root = next((n["node"] for n in nodes if not n.get("parent")), None)
-            if root is None and nodes:
-                root = nodes[0]["node"]
-            if root is not None:
-                return {root: flat}
+    flat = vault_root / "wiki"
+    if flat.is_dir() and flat not in out.values():
+        root = _root_node(nodes)
+        if root is not None and root not in out:
+            out[root] = flat
     return out
 
 
@@ -231,16 +239,34 @@ def list_index(vault_root: Path, tree: dict, agent: AgentProfile) -> list[dict]:
 # Schreib-Operationen (nur in write_scope; 'session' = ephemerer Sandbox)
 # ---------------------------------------------------------------------------
 
+def _node_path(tree: dict, node: str) -> str | None:
+    """Deklarierter Pfad eines Nodes aus vault-tree.yaml (für Schreibziele)."""
+    for n in tree.get("tree", []) or []:
+        if isinstance(n, dict) and n.get("node") == node:
+            return n.get("path")
+    return None
+
+
 def _write_target(vault_root: Path, tree: dict, agent: AgentProfile) -> tuple[str, Path, str]:
-    """(node-label, wiki-dir, visibility) für Schreibvorgänge des Agenten."""
+    """(node-label, wiki-dir, visibility) für Schreibvorgänge des Agenten.
+
+    Bevorzugt das LESE-Verzeichnis des write_scope-Nodes (→ Geschriebenes ist auch wieder
+    lesbar). Existiert es noch nicht, wird der deklarierte Node-Pfad genommen und beim
+    Schreiben angelegt (persistenter persönlicher/Team-Node). Nur wenn der Node weder
+    gemappt noch deklariert ist, weicht der Server fail-closed in die Session-Sandbox aus.
+    """
     if agent.write_scope == SESSION:
-        # ephemerer, nicht-synchronisierter Sandbox-Node
         return SESSION, vault_root / ".sessions" / agent.id / "wiki", "personal"
-    wiki_dir = node_wiki_dirs(vault_root, tree).get(agent.write_scope)
-    if wiki_dir is None:
-        # write_scope zeigt auf unbekannten Node → fail closed: in Session ausweichen
+
+    read_dir = node_wiki_dirs(vault_root, tree).get(agent.write_scope)
+    path = _node_path(tree, agent.write_scope)
+    if read_dir is not None:
+        target = read_dir
+    elif path:
+        target = vault_root / path / "wiki"     # wird beim Schreiben angelegt
+    else:
         return SESSION, vault_root / ".sessions" / agent.id / "wiki", "personal"
-    return agent.write_scope, wiki_dir, node_default_visibility(tree, agent.write_scope)
+    return agent.write_scope, target, node_default_visibility(tree, agent.write_scope)
 
 
 def remember(vault_root: Path, tree: dict, agent: AgentProfile, text: str) -> dict:

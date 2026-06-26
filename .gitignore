@@ -54,3 +54,6 @@ output/*
 
 # Ephemerer MCP-Session-Sandbox (write_scope: session) — nie committen
 .sessions/
+
+# MCP-Client-Registrierung — maschinen-spezifisch (VAULT_ROOT-Pfad, Agenten-ID)
+.mcp.json
